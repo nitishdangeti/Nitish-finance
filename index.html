@@ -65,4 +65,643 @@ button{background:#16a34a;color:#fff;font-weight:bold;cursor:pointer}
 
 <!-- AUTH SCREEN -->
 <div id="authScreen" class="card">
-  <div class="authhead">
+  <div class="authhead"><h2>Nitish Finance OS</h2><div style="opacity:.7;font-size:13px">Sign in to sync your data</div></div>
+  <input id="authEmail" type="email" placeholder="Email">
+  <input id="authPass" type="password" placeholder="Password">
+  <div id="authError" class="error"></div>
+  <button onclick="handleAuth('login')">Log In</button>
+  <button class="toplink" onclick="handleAuth('signup')">New here? Create an account</button>
+</div>
+
+<!-- MAIN APP -->
+<div id="appScreen" class="hidden">
+<div class="header">
+<div class="row" style="align-items:center">
+  <div style="font-size:12px;letter-spacing:2px">NITISH FINANCE OS PRO</div>
+  <div style="font-size:10px;opacity:.6;margin-top:2px">✅ Synced via GitHub</div>
+  <button class="logout" onclick="logout()">Log out</button>
+</div>
+<h1 id="bal">₹0</h1>
+<div class="row"><span>Income</span><span id="inc">₹0</span></div>
+<div class="row"><span>Expense</span><span id="exp">₹0</span></div>
+</div>
+
+<div class="tabbar">
+  <button class="tabbtn active" id="tabbtn-add" onclick="showTab('add')">Add Transaction</button>
+  <button class="tabbtn" id="tabbtn-clients" onclick="showTab('clients')">Clients</button>
+  <button class="tabbtn" id="tabbtn-owes" onclick="showTab('owes')">My Owes</button>
+  <button class="tabbtn" id="tabbtn-overview" onclick="showTab('overview')">Overview</button>
+</div>
+
+<div id="panels">
+
+  <!-- ADD TRANSACTION TAB -->
+  <div class="tabpanel active" id="panel-add">
+    <div class="card">
+      <h3>Import from Statement PDF</h3>
+      <div style="opacity:.7;font-size:13px;margin-bottom:8px">Upload a PhonePe, Google Pay, Paytm, or bank statement PDF. Review the detected entries before importing — nothing saves until you confirm.</div>
+      <input id="pdfUploadInput" type="file" accept="application/pdf" onchange="handlePdfUpload(event)">
+      <div id="importStatus" style="font-size:13px;opacity:.8"></div>
+      <div id="importPreview"></div>
+      <button id="importBtn" class="hidden" onclick="importSelected()">Import Selected</button>
+    </div>
+
+    <div class="card">
+      <h3>Add Transaction</h3>
+      <input id="amt" type="number" placeholder="Amount ₹">
+      <select id="type" onchange="toggleClientFields()"><option>Expense</option><option>Income</option></select>
+
+      <div id="clientFields" class="hidden">
+        <select id="clientSelect"><option value="">No client (general income)</option></select>
+        <select id="paymentType">
+          <option>Advance</option>
+          <option>Partial</option>
+          <option>Final</option>
+          <option>Full</option>
+          <option>Other</option>
+        </select>
+      </div>
+
+      <select id="cat">
+      <option>Food</option><option>Fuel</option><option>Tea/Coffee</option>
+      <option>Cigarettes</option><option>Shopping</option><option>Travel</option>
+      <option>Medical</option><option>Bills</option><option>EMI/Debt</option>
+      <option>Camera Gear</option><option>Entertainment</option>
+      <option>Freelance Payment</option><option>Other</option>
+      </select>
+      <input id="note" placeholder="Description">
+      <button onclick="addTx()">Add Entry</button>
+    </div>
+  </div>
+
+  <!-- CLIENTS TAB -->
+  <div class="tabpanel" id="panel-clients">
+    <div class="card">
+      <h3>Add Client</h3>
+      <input id="clientName" placeholder="Client / Project name">
+      <input id="clientTotal" type="number" placeholder="Total agreed amount ₹">
+      <input id="clientPhone" type="tel" placeholder="WhatsApp number (e.g. 91XXXXXXXXXX)">
+      <button onclick="addClient()">Add Client</button>
+    </div>
+    <div class="card">
+      <h3>Client Balances</h3>
+      <div id="clientList"></div>
+    </div>
+  </div>
+
+  <!-- MY OWES TAB -->
+  <div class="tabpanel" id="panel-owes">
+    <div class="card">
+      <h3>Add a Debt</h3>
+      <input id="oweName" placeholder="Who / what you owe (e.g. Loan, Ramesh)">
+      <input id="oweTotal" type="number" placeholder="Total amount owed ₹">
+      <input id="oweNote" placeholder="Note (optional)">
+      <button onclick="addOwe()">Add Debt</button>
+    </div>
+    <div class="card">
+      <h3>Your Debts</h3>
+      <div id="oweList"></div>
+    </div>
+  </div>
+
+  <!-- OVERVIEW TAB -->
+  <div class="tabpanel" id="panel-overview">
+    <div class="card">
+      <h3>Transactions</h3>
+      <div id="list"></div>
+      <button class="repayBtn" style="width:100%" onclick="exportCSV()">Download Backup (CSV)</button>
+      <button class="reset" onclick="resetAll()">Clear All Data</button>
+    </div>
+  </div>
+
+</div>
+</div>
+
+</div>
+
+<script>
+// ======================================================
+// STEP 1: Paste your Supabase project URL and anon key here
+// ======================================================
+const SUPABASE_URL = "https://ceboyaukuxvfymiedpwj.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_1bVD9SgAT6G6si8Sg7iDYA_pF5Y63-c";
+// ======================================================
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let tx = [];
+let clients = [];
+let owes = [];
+let currentUser = null;
+
+const money=v=>"₹"+v.toLocaleString("en-IN");
+
+// ---------- TABS ----------
+function showTab(name){
+  ["overview","clients","owes","add"].forEach(t=>{
+    document.getElementById("panel-"+t).classList.toggle("active", t===name);
+    document.getElementById("tabbtn-"+t).classList.toggle("active", t===name);
+  });
+}
+
+// ---------- AUTH ----------
+async function handleAuth(mode){
+  const email = document.getElementById("authEmail").value.trim();
+  const password = document.getElementById("authPass").value;
+  const errEl = document.getElementById("authError");
+  errEl.textContent = "";
+  if(!email || !password){ errEl.textContent = "Enter email and password."; return; }
+
+  let result;
+  if(mode === "signup"){
+    result = await sb.auth.signUp({ email, password });
+  } else {
+    result = await sb.auth.signInWithPassword({ email, password });
+  }
+
+  if(result.error){
+    errEl.textContent = result.error.message;
+    return;
+  }
+  if(mode === "signup" && !result.data.session){
+    errEl.textContent = "Account created. Check your email to confirm, then log in.";
+    return;
+  }
+  await onLoggedIn(result.data.session.user);
+}
+
+async function onLoggedIn(user){
+  currentUser = user;
+  document.getElementById("authScreen").classList.add("hidden");
+  document.getElementById("appScreen").classList.remove("hidden");
+  await loadClients();
+  await loadOwes();
+  await loadTx();
+}
+
+async function logout(){
+  await sb.auth.signOut();
+  currentUser = null;
+  tx = [];
+  clients = [];
+  owes = [];
+  document.getElementById("appScreen").classList.add("hidden");
+  document.getElementById("authScreen").classList.remove("hidden");
+  document.getElementById("authEmail").value = "";
+  document.getElementById("authPass").value = "";
+}
+
+// check for existing session on load
+(async () => {
+  const { data } = await sb.auth.getSession();
+  if(data.session){
+    await onLoggedIn(data.session.user);
+  }
+})();
+
+// ---------- CLIENT FIELD TOGGLE ----------
+function toggleClientFields(){
+  const isIncome = document.getElementById("type").value === "Income";
+  document.getElementById("clientFields").classList.toggle("hidden", !isIncome);
+}
+
+// ---------- CLIENTS ----------
+async function loadClients(){
+  const { data, error } = await sb
+    .from("clients")
+    .select("*")
+    .order("created_at", { ascending: true });
+  if(error){ console.error(error); return; }
+  clients = data || [];
+  populateClientDropdown();
+  renderClients();
+}
+
+function populateClientDropdown(){
+  const sel = document.getElementById("clientSelect");
+  sel.innerHTML = '<option value="">No client (general income)</option>';
+  clients.forEach(c=>{
+    sel.innerHTML += `<option value="${c.id}">${c.name}</option>`;
+  });
+}
+
+async function addClient(){
+  const name = document.getElementById("clientName").value.trim();
+  const total = Number(document.getElementById("clientTotal").value) || 0;
+  const phone = document.getElementById("clientPhone").value.trim();
+  if(!name){ return; }
+  const { data, error } = await sb.from("clients").insert({
+    user_id: currentUser.id,
+    name,
+    total_amount: total,
+    phone
+  }).select();
+  if(error){ alert("Couldn't add client: " + error.message); return; }
+  clients.push(data[0]);
+  document.getElementById("clientName").value = "";
+  document.getElementById("clientTotal").value = "";
+  document.getElementById("clientPhone").value = "";
+  populateClientDropdown();
+  renderClients();
+}
+
+async function deleteClient(id){
+  if(!confirm("Delete this client? Transactions linked to them will keep their amounts but lose the client tag.")) return;
+  const { error } = await sb.from("clients").delete().eq("id", id);
+  if(error){ alert("Couldn't delete: " + error.message); return; }
+  clients = clients.filter(c => c.id !== id);
+  tx.forEach(t => { if(t.client_id === id) t.client_id = null; });
+  populateClientDropdown();
+  renderClients();
+  render();
+}
+
+function renderClients(){
+  const el = document.getElementById("clientList");
+  if(clients.length === 0){
+    el.innerHTML = '<div class="empty">No clients yet — add one above.</div>';
+    return;
+  }
+  el.innerHTML = "";
+  clients.forEach(c=>{
+    const paid = tx.filter(t => t.client_id === c.id && t.type === "Income")
+                    .reduce((s,t)=>s+Number(t.amt),0);
+    const pending = Math.max(0, Number(c.total_amount) - paid);
+    const pct = c.total_amount > 0 ? Math.min(100, Math.round((paid / c.total_amount) * 100)) : 0;
+    const reminderBtn = (pending > 0 && c.phone)
+      ? `<button class="repayBtn" onclick="sendReminder('${c.id}')">Send Reminder on WhatsApp</button>`
+      : "";
+    const phoneLine = c.phone ? `<div style="opacity:.6;font-size:12px;margin-top:4px">📱 ${c.phone}</div>` : `<div style="opacity:.6;font-size:12px;margin-top:4px">No WhatsApp number saved</div>`;
+    el.innerHTML += `
+      <div class="clientCard">
+        <div class="row"><b>${c.name}</b>
+          <span>
+            <button class="del" style="margin:0;background:#374151;display:inline-block;width:auto" onclick="editClient('${c.id}')">Edit</button>
+            <button class="del" style="margin:0;display:inline-block;width:auto" onclick="deleteClient('${c.id}')">Delete</button>
+          </span>
+        </div>
+        ${phoneLine}
+        <div class="row"><span>Total agreed</span><span>${money(Number(c.total_amount))}</span></div>
+        <div class="row"><span>Paid so far</span><span class="paidfull">${money(paid)}</span></div>
+        <div class="row"><span>Pending</span><span class="${pending>0?'pending':'paidfull'}">${pending>0?money(pending):'Fully paid'}</span></div>
+        <div class="bar"><div class="barfill" style="width:${pct}%"></div></div>
+        ${reminderBtn}
+      </div>`;
+  });
+}
+
+async function editClient(id){
+  const c = clients.find(x => x.id === id);
+  if(!c) return;
+
+  const newName = prompt("Client / Project name:", c.name);
+  if(newName === null) return;
+
+  const newTotalStr = prompt("Total agreed amount ₹:", c.total_amount);
+  if(newTotalStr === null) return;
+
+  const newPhone = prompt("WhatsApp number (with country code, e.g. 91XXXXXXXXXX):", c.phone || "");
+  if(newPhone === null) return;
+
+  const updates = {
+    name: newName.trim() || c.name,
+    total_amount: Number(newTotalStr) || 0,
+    phone: newPhone.trim()
+  };
+
+  const { data, error } = await sb.from("clients").update(updates).eq("id", id).select();
+  if(error){ alert("Couldn't update: " + error.message); return; }
+  Object.assign(c, data[0]);
+  populateClientDropdown();
+  renderClients();
+}
+
+function sendReminder(clientId){
+  const c = clients.find(x => x.id === clientId);
+  if(!c) return;
+  const paid = tx.filter(t => t.client_id === c.id && t.type === "Income")
+                  .reduce((s,t)=>s+Number(t.amt),0);
+  const pending = Math.max(0, Number(c.total_amount) - paid);
+  if(pending <= 0){ alert("This client has no pending balance."); return; }
+  if(!c.phone){ alert("Add a WhatsApp number for this client first."); return; }
+  const phone = c.phone.replace(/[^0-9]/g, "");
+  const message = `Hi ${c.name}, this is a reminder that ${money(pending)} is still pending. Please let me know if you have any questions. Thanks!`;
+  const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  window.open(url, "_blank");
+}
+
+// ---------- MY OWES (DEBTS) ----------
+async function loadOwes(){
+  const { data, error } = await sb
+    .from("debts")
+    .select("*")
+    .order("created_at", { ascending: true });
+  if(error){ console.error(error); return; }
+  owes = data || [];
+  renderOwes();
+}
+
+async function addOwe(){
+  const name = document.getElementById("oweName").value.trim();
+  const total = Number(document.getElementById("oweTotal").value) || 0;
+  const note = document.getElementById("oweNote").value.trim();
+  if(!name || !total){ return; }
+  const { data, error } = await sb.from("debts").insert({
+    user_id: currentUser.id,
+    name,
+    total_amount: total,
+    paid_amount: 0,
+    note
+  }).select();
+  if(error){ alert("Couldn't add debt: " + error.message); return; }
+  owes.push(data[0]);
+  document.getElementById("oweName").value = "";
+  document.getElementById("oweTotal").value = "";
+  document.getElementById("oweNote").value = "";
+  renderOwes();
+}
+
+async function repayOwe(id){
+  const owe = owes.find(o => o.id === id);
+  if(!owe) return;
+  const remaining = Number(owe.total_amount) - Number(owe.paid_amount);
+  const input = prompt(`How much are you paying off "${owe.name}"? (Remaining: ${money(remaining)})`);
+  if(input === null) return;
+  const amt = Number(input);
+  if(!amt || amt <= 0) return;
+  const newPaid = Math.min(Number(owe.total_amount), Number(owe.paid_amount) + amt);
+  const { data, error } = await sb.from("debts").update({ paid_amount: newPaid }).eq("id", id).select();
+  if(error){ alert("Couldn't update: " + error.message); return; }
+  owe.paid_amount = data[0].paid_amount;
+  renderOwes();
+}
+
+async function deleteOwe(id){
+  if(!confirm("Delete this debt record?")) return;
+  const { error } = await sb.from("debts").delete().eq("id", id);
+  if(error){ alert("Couldn't delete: " + error.message); return; }
+  owes = owes.filter(o => o.id !== id);
+  renderOwes();
+}
+
+function renderOwes(){
+  const el = document.getElementById("oweList");
+  if(owes.length === 0){
+    el.innerHTML = '<div class="empty">No debts added — you are all clear, or add one above.</div>';
+    return;
+  }
+  el.innerHTML = "";
+  owes.forEach(o=>{
+    const remaining = Math.max(0, Number(o.total_amount) - Number(o.paid_amount));
+    const pct = o.total_amount > 0 ? Math.min(100, Math.round((Number(o.paid_amount) / Number(o.total_amount)) * 100)) : 0;
+    el.innerHTML += `
+      <div class="owesCard">
+        <div class="row"><b>${o.name}</b><button class="del" style="margin:0" onclick="deleteOwe('${o.id}')">Delete</button></div>
+        ${o.note ? `<div style="opacity:.7;font-size:13px">${o.note}</div>` : ""}
+        <div class="row"><span>Total owed</span><span>${money(Number(o.total_amount))}</span></div>
+        <div class="row"><span>Paid off</span><span class="paidfull">${money(Number(o.paid_amount))}</span></div>
+        <div class="row"><span>Remaining</span><span class="${remaining>0?'pending':'paidfull'}">${remaining>0?money(remaining):'Cleared'}</span></div>
+        <div class="bar"><div class="owebarfill" style="width:${pct}%"></div></div>
+        ${remaining>0 ? `<button class="repayBtn" onclick="repayOwe('${o.id}')">Log a Repayment</button>` : ""}
+      </div>`;
+  });
+}
+
+// ---------- PDF STATEMENT IMPORT ----------
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+let importedRows = [];
+
+function getPageLines(content){
+  const lines = {};
+  content.items.forEach(item=>{
+    const y = Math.round(item.transform[5]);
+    if(!lines[y]) lines[y] = [];
+    lines[y].push(item.str);
+  });
+  const ys = Object.keys(lines).map(Number).sort((a,b)=>b-a);
+  return ys.map(y=>lines[y].join(' ').trim()).filter(Boolean);
+}
+
+async function handlePdfUpload(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById("importStatus");
+  statusEl.textContent = "Reading PDF...";
+  document.getElementById("importBtn").classList.add("hidden");
+  document.getElementById("importPreview").innerHTML = "";
+  try{
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let allLines = [];
+    for(let i=1;i<=pdf.numPages;i++){
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      allLines = allLines.concat(getPageLines(content));
+    }
+    statusEl.textContent = "Parsing transactions...";
+    const parsed = parseStatementLines(allLines);
+    if(parsed.length === 0){
+      statusEl.textContent = "Couldn't automatically detect transactions in this PDF. You can still add entries manually below.";
+      return;
+    }
+    statusEl.textContent = `${parsed.length} transaction(s) found. Review before importing — uncheck or edit anything that looks wrong.`;
+    renderImportPreview(parsed);
+    document.getElementById("importBtn").classList.remove("hidden");
+  }catch(err){
+    statusEl.textContent = "Couldn't read this PDF (it may be password-protected or an unsupported format).";
+    console.error(err);
+  }
+}
+
+function parseStatementLines(lines){
+  const dateRegex = /^(?:[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}\s+[A-Za-z]{3,9}\.?,?\s+\d{4}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2})$/;
+  const amountRegex = /(?:₹|Rs\.?|INR)\s?([\d,]+(?:\.\d{1,2})?)|\b([\d,]+\.\d{2})\s?(?:Dr|Cr|DR|CR)\b/;
+  const results = [];
+  let currentDate = null;
+  let buffer = [];
+
+  function flush(){
+    if(buffer.length === 0) return;
+    const blockText = buffer.join(' ');
+    const amtMatch = blockText.match(amountRegex);
+    if(amtMatch){
+      const raw = amtMatch[1] || amtMatch[2];
+      const amount = parseFloat(raw.replace(/,/g,''));
+      let type = "Expense";
+      if(/\bcr\b|credited|credit(?!ed to)|received|deposit/i.test(blockText)) type = "Income";
+      if(/\bdr\b|debited|debit|paid|withdrawal|payment to|sent/i.test(blockText)) type = "Expense";
+      let desc = blockText
+        .replace(amountRegex,'')
+        .replace(/\b(debit|credit(ed)?|received|paid to|paid|withdrawal|deposit|dr|cr|transaction id.*$|ref no.*$|utr.*$)\b/gi,'')
+        .replace(/\s+/g,' ')
+        .trim()
+        .slice(0,60);
+      if(amount > 0){
+        results.push({ date: currentDate, type, amount, desc: desc || "Imported transaction" });
+      }
+    }
+    buffer = [];
+  }
+
+  lines.forEach(line=>{
+    if(dateRegex.test(line)){
+      flush();
+      currentDate = line;
+    } else {
+      buffer.push(line);
+      if(amountRegex.test(line)) flush();
+    }
+  });
+  flush();
+  return results;
+}
+
+function renderImportPreview(rows){
+  importedRows = rows;
+  const el = document.getElementById("importPreview");
+  el.innerHTML = rows.map((r,i)=>`
+    <div class="item">
+      <label style="display:flex;align-items:center;gap:8px;margin:0">
+        <input type="checkbox" id="imp-check-${i}" checked style="width:auto;margin:0">
+        <span style="flex:1;font-size:13px">${r.date ? r.date + " — " : ""}${r.desc}</span>
+      </label>
+      <div class="row" style="margin-top:8px;gap:8px">
+        <select id="imp-type-${i}" style="margin:0">
+          <option value="Expense" ${r.type==='Expense'?'selected':''}>Expense</option>
+          <option value="Income" ${r.type==='Income'?'selected':''}>Income</option>
+        </select>
+        <input id="imp-amt-${i}" type="number" value="${r.amount}" style="margin:0">
+      </div>
+    </div>
+  `).join('');
+}
+
+async function importSelected(){
+  const toInsert = [];
+  importedRows.forEach((r,i)=>{
+    const checkEl = document.getElementById(`imp-check-${i}`);
+    if(!checkEl || !checkEl.checked) return;
+    const type = document.getElementById(`imp-type-${i}`).value;
+    const amt = Number(document.getElementById(`imp-amt-${i}`).value);
+    if(!amt) return;
+    toInsert.push({
+      user_id: currentUser.id,
+      type,
+      cat: type === "Income" ? "Freelance Payment" : "Other",
+      note: r.desc || "Imported from statement",
+      amt
+    });
+  });
+  if(toInsert.length === 0){ alert("No transactions selected to import."); return; }
+  const { data, error } = await sb.from("transactions").insert(toInsert).select();
+  if(error){ alert("Import failed: " + error.message); return; }
+  tx.push(...data);
+  render();
+  renderClients();
+  document.getElementById("importPreview").innerHTML = "";
+  document.getElementById("importBtn").classList.add("hidden");
+  document.getElementById("importStatus").textContent = `${data.length} transaction(s) imported successfully.`;
+  document.getElementById("pdfUploadInput").value = "";
+  showTab('overview');
+}
+
+// ---------- TRANSACTIONS ----------
+async function loadTx(){
+  const { data, error } = await sb
+    .from("transactions")
+    .select("*")
+    .order("created_at", { ascending: true });
+  if(error){ console.error(error); return; }
+  tx = data || [];
+  render();
+  renderClients();
+}
+
+async function addTx(){
+  const amt = Number(document.getElementById("amt").value);
+  if(!amt) return;
+  const isIncome = document.getElementById("type").value === "Income";
+  const entry = {
+    user_id: currentUser.id,
+    type: document.getElementById("type").value,
+    cat: document.getElementById("cat").value,
+    note: document.getElementById("note").value || "No description",
+    amt,
+    client_id: isIncome ? (document.getElementById("clientSelect").value || null) : null,
+    payment_type: isIncome ? document.getElementById("paymentType").value : null
+  };
+  const { data, error } = await sb.from("transactions").insert(entry).select();
+  if(error){ alert("Couldn't save: " + error.message); return; }
+  tx.push(data[0]);
+  document.getElementById("amt").value = "";
+  document.getElementById("note").value = "";
+  render();
+  renderClients();
+  showTab('overview');
+}
+
+async function deleteTx(id){
+  const { error } = await sb.from("transactions").delete().eq("id", id);
+  if(error){ alert("Couldn't delete: " + error.message); return; }
+  tx = tx.filter(t => t.id !== id);
+  render();
+  renderClients();
+}
+
+async function resetAll(){
+  if(!confirm("Delete all transactions? This can't be undone.")) return;
+  const { error } = await sb.from("transactions").delete().eq("user_id", currentUser.id);
+  if(error){ alert("Couldn't clear: " + error.message); return; }
+  tx = [];
+  render();
+  renderClients();
+}
+
+// ---------- BACKUP / EXPORT ----------
+function exportCSV(){
+  if(tx.length === 0){ alert("No transactions to export yet."); return; }
+  const headers = ["Date","Type","Category","Amount","Description","Client","PaymentType"];
+  const rows = tx.slice().reverse().map(t=>{
+    const client = clients.find(c => c.id === t.client_id);
+    const date = t.created_at ? new Date(t.created_at).toLocaleDateString("en-IN") : "";
+    const esc = v => `"${String(v||"").replace(/"/g,'""')}"`;
+    return [date, t.type, t.cat, t.amt, esc(t.note), esc(client?client.name:""), esc(t.payment_type||"")].join(",");
+  });
+  const csv = [headers.join(","), ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `nitish-finance-backup-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ---------- RENDER ----------
+function render(){
+  let income=0, expense=0;
+  const list = document.getElementById("list");
+  if(tx.length === 0){
+    list.innerHTML = '<div class="empty">No transactions yet — add one from the "Add Transaction" tab.</div>';
+  } else {
+    list.innerHTML = "";
+    tx.slice().reverse().forEach(t=>{
+      const client = clients.find(c => c.id === t.client_id);
+      const tagHtml = t.type==="Income"
+        ? `<div class="tag">${t.payment_type||"Payment"}${client ? " · " + client.name : ""}</div>`
+        : "";
+      list.innerHTML += `<div class="item"><div class="row"><b>${t.cat}</b><b style="color:${t.type==="Income"?"#22c55e":"#ef4444"}">${t.type==="Income"?"+":"-"}${money(Number(t.amt))}</b></div><div>${t.note}</div>${tagHtml}<button class="del" onclick="deleteTx('${t.id}')">Delete</button></div>`;
+    });
+  }
+  tx.forEach(t=>{
+    if(t.type==="Income") income+=Number(t.amt); else expense+=Number(t.amt);
+  });
+  document.getElementById("inc").textContent = money(income);
+  document.getElementById("exp").textContent = money(expense);
+  document.getElementById("bal").textContent = money(income-expense);
+}
+</script>
+</body>
+</html>
