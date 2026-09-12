@@ -55,6 +55,7 @@ button{background:#16a34a;color:#fff;font-weight:bold;cursor:pointer}
     gap:20px;
     align-items:start;
   }
+  /* On desktop, show Clients + Add Transaction side by side; Overview spans full width */
   #panel-overview.active{grid-column:1 / -1}
   button:hover{opacity:0.9}
 }
@@ -101,6 +102,10 @@ button{background:#16a34a;color:#fff;font-weight:bold;cursor:pointer}
       <h3>Import from Statement PDF</h3>
       <div style="opacity:.7;font-size:13px;margin-bottom:8px">Upload a PhonePe, Google Pay, Paytm, or bank statement PDF. Review the detected entries before importing — nothing saves until you confirm.</div>
       <input id="pdfUploadInput" type="file" accept="application/pdf" onchange="handlePdfUpload(event)">
+      <div id="pdfPasswordFields" class="hidden">
+        <input id="pdfPassword" type="text" placeholder="PDF password (e.g. mobile number, PAN, DOB)">
+        <button onclick="retryPdfWithPassword()">Unlock & Read PDF</button>
+      </div>
       <div id="importStatus" style="font-size:13px;opacity:.8"></div>
       <div id="importPreview"></div>
       <button id="importBtn" class="hidden" onclick="importSelected()">Import Selected</button>
@@ -482,16 +487,35 @@ function getPageLines(content){
   return ys.map(y=>lines[y].join(' ').trim()).filter(Boolean);
 }
 
+let pendingPdfBuffer = null;
+
 async function handlePdfUpload(event){
   const file = event.target.files[0];
   if(!file) return;
   const statusEl = document.getElementById("importStatus");
+  document.getElementById("pdfPasswordFields").classList.add("hidden");
   statusEl.textContent = "Reading PDF...";
   document.getElementById("importBtn").classList.add("hidden");
   document.getElementById("importPreview").innerHTML = "";
+  const arrayBuffer = await file.arrayBuffer();
+  pendingPdfBuffer = arrayBuffer;
+  await loadPdfAndParse(arrayBuffer, null);
+}
+
+async function retryPdfWithPassword(){
+  const password = document.getElementById("pdfPassword").value;
+  if(!password || !pendingPdfBuffer) return;
+  document.getElementById("importStatus").textContent = "Unlocking PDF...";
+  await loadPdfAndParse(pendingPdfBuffer, password);
+}
+
+async function loadPdfAndParse(arrayBuffer, password){
+  const statusEl = document.getElementById("importStatus");
   try{
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const opts = { data: arrayBuffer.slice(0) };
+    if(password) opts.password = password;
+    const pdf = await pdfjsLib.getDocument(opts).promise;
+    document.getElementById("pdfPasswordFields").classList.add("hidden");
     let allLines = [];
     for(let i=1;i<=pdf.numPages;i++){
       const page = await pdf.getPage(i);
@@ -508,14 +532,26 @@ async function handlePdfUpload(event){
     renderImportPreview(parsed);
     document.getElementById("importBtn").classList.remove("hidden");
   }catch(err){
-    statusEl.textContent = "Couldn't read this PDF (it may be password-protected or an unsupported format).";
-    console.error(err);
+    if(err && err.name === "PasswordException"){
+      document.getElementById("pdfPasswordFields").classList.remove("hidden");
+      statusEl.textContent = password
+        ? "That password didn't work — try again."
+        : "This PDF is password-protected. Enter the password below to unlock it.";
+    } else {
+      statusEl.textContent = "Couldn't read this PDF (it may be corrupted or an unsupported format).";
+      console.error(err);
+    }
   }
 }
 
 function parseStatementLines(lines){
+  // Matches many common date formats: "Jan 01, 2026", "01 Jan 2026",
+  // "01/01/2026", "01-01-2026", "2026-01-01"
   const dateRegex = /^(?:[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}\s+[A-Za-z]{3,9}\.?,?\s+\d{4}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2})$/;
+
+  // Matches ₹500, Rs.500, Rs 500, INR 500, or plain 500.00 followed by Dr/Cr
   const amountRegex = /(?:₹|Rs\.?|INR)\s?([\d,]+(?:\.\d{1,2})?)|\b([\d,]+\.\d{2})\s?(?:Dr|Cr|DR|CR)\b/;
+
   const results = [];
   let currentDate = null;
   let buffer = [];
