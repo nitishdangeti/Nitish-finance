@@ -544,6 +544,29 @@ async function loadPdfAndParse(arrayBuffer, password){
   }
 }
 
+// Guesses a category from merchant/description text using keyword matching.
+// Categories match exactly the options in the manual "Add Transaction" dropdown.
+function guessCategory(desc, type){
+  const d = (desc || "").toLowerCase();
+  const rules = [
+    { cat: "Cigarettes", words: ["cigarette","cigar","tobacco","panwala","pan shop","gutkha"] },
+    { cat: "Tea/Coffee", words: ["tea stall","chai","coffee","starbucks","ccd","cafe coffee","tea point"] },
+    { cat: "Fuel", words: ["petrol","diesel","fuel","hpcl","iocl","bpcl","indian oil","hindustan petroleum","bharat petroleum","shell","filling station","petroleum"] },
+    { cat: "Food", words: ["swiggy","zomato","restaurant","food","eatery","dine","dhaba","biryani","hotel","kitchen","foods","bakery","sweets"] },
+    { cat: "Medical", words: ["pharmacy","hospital","medical","clinic","medicine","apollo","chemist","diagnostic","health"] },
+    { cat: "Travel", words: ["uber","ola","irctc","railway","train","flight","indigo","airlines","redbus","cab","travels","metro","toll","parking"] },
+    { cat: "Bills", words: ["recharge","electricity","broadband","wifi","dth","postpaid","prepaid","gas bill","water bill","utility"] },
+    { cat: "EMI/Debt", words: ["emi","loan","installment","lending","credit card bill"] },
+    { cat: "Camera Gear", words: ["camera","lens","tripod","gimbal","photography","videography"] },
+    { cat: "Entertainment", words: ["netflix","spotify","prime video","bookmyshow","movie","cinema","hotstar","youtube premium","gaming"] },
+    { cat: "Shopping", words: ["amazon","flipkart","myntra","mall","store","mart","supermarket","shopping","reliance trends","dmart"] },
+  ];
+  for(const rule of rules){
+    if(rule.words.some(w => d.includes(w))) return rule.cat;
+  }
+  return type === "Income" ? "Freelance Payment" : "Other";
+}
+
 function parseStatementLines(lines){
   // Matches many common date formats: "Jan 01, 2026", "01 Jan 2026",
   // "01/01/2026", "01-01-2026", "2026-01-01"
@@ -572,8 +595,10 @@ function parseStatementLines(lines){
         .replace(/\s+/g,' ')
         .trim()
         .slice(0,60);
+      desc = desc || "Imported transaction";
       if(amount > 0){
-        results.push({ date: currentDate, type, amount, desc: desc || "Imported transaction" });
+        const cat = guessCategory(desc, type);
+        results.push({ date: currentDate, type, amount, desc, cat });
       }
     }
     buffer = [];
@@ -608,6 +633,10 @@ function renderImportPreview(rows){
         </select>
         <input id="imp-amt-${i}" type="number" value="${r.amount}" style="margin:0">
       </div>
+      <select id="imp-cat-${i}" style="margin:8px 0 0 0">
+        ${["Food","Fuel","Tea/Coffee","Cigarettes","Shopping","Travel","Medical","Bills","EMI/Debt","Camera Gear","Entertainment","Freelance Payment","Other"]
+          .map(c => `<option value="${c}" ${r.cat===c?'selected':''}>${c}</option>`).join('')}
+      </select>
     </div>
   `).join('');
 }
@@ -619,11 +648,12 @@ async function importSelected(){
     if(!checkEl || !checkEl.checked) return;
     const type = document.getElementById(`imp-type-${i}`).value;
     const amt = Number(document.getElementById(`imp-amt-${i}`).value);
+    const cat = document.getElementById(`imp-cat-${i}`).value;
     if(!amt) return;
     toInsert.push({
       user_id: currentUser.id,
       type,
-      cat: type === "Income" ? "Freelance Payment" : "Other",
+      cat,
       note: r.desc || "Imported from statement",
       amt
     });
