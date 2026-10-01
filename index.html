@@ -72,6 +72,15 @@ button{background:#16a34a;color:#fff;font-weight:bold;cursor:pointer}
   <div id="authError" class="error"></div>
   <button onclick="handleAuth('login')">Log In</button>
   <button class="toplink" onclick="handleAuth('signup')">New here? Create an account</button>
+  <button class="toplink" onclick="sendPasswordReset()">Forgot password?</button>
+</div>
+
+<!-- SET NEW PASSWORD SCREEN (shown after clicking reset link in email) -->
+<div id="resetScreen" class="card hidden">
+  <div class="authhead"><h2>Set New Password</h2><div style="opacity:.7;font-size:13px">Choose a new password for your account</div></div>
+  <input id="newPassword" type="password" placeholder="New password">
+  <div id="resetError" class="error"></div>
+  <button onclick="setNewPassword()">Save New Password</button>
 </div>
 
 <!-- MAIN APP -->
@@ -256,8 +265,43 @@ async function logout(){
   document.getElementById("authPass").value = "";
 }
 
-// check for existing session on load
+async function sendPasswordReset(){
+  const email = document.getElementById("authEmail").value.trim();
+  const errEl = document.getElementById("authError");
+  errEl.textContent = "";
+  if(!email){ errEl.textContent = "Enter your email above first, then tap 'Forgot password?'"; return; }
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + window.location.pathname
+  });
+  if(error){ errEl.textContent = error.message; return; }
+  errEl.style.color = "#22c55e";
+  errEl.textContent = "Reset link sent! Check your email and tap the link to set a new password.";
+}
+
+async function setNewPassword(){
+  const newPass = document.getElementById("newPassword").value;
+  const errEl = document.getElementById("resetError");
+  errEl.textContent = "";
+  if(!newPass || newPass.length < 6){ errEl.textContent = "Password must be at least 6 characters."; return; }
+  const { error } = await sb.auth.updateUser({ password: newPass });
+  if(error){ errEl.textContent = error.message; return; }
+  alert("Password updated! You're now logged in.");
+  document.getElementById("resetScreen").classList.add("hidden");
+  const { data } = await sb.auth.getSession();
+  if(data.session){
+    await onLoggedIn(data.session.user);
+  }
+}
+
+// check for existing session on load, and detect password-recovery links
 (async () => {
+  sb.auth.onAuthStateChange((event, session) => {
+    if(event === "PASSWORD_RECOVERY"){
+      document.getElementById("authScreen").classList.add("hidden");
+      document.getElementById("appScreen").classList.add("hidden");
+      document.getElementById("resetScreen").classList.remove("hidden");
+    }
+  });
   const { data } = await sb.auth.getSession();
   if(data.session){
     await onLoggedIn(data.session.user);
