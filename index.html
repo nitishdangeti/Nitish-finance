@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nitish Finance OS PRO</title>
+<title>Finance Calculator</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
@@ -66,7 +66,7 @@ button{background:#16a34a;color:#fff;font-weight:bold;cursor:pointer}
 
 <!-- AUTH SCREEN -->
 <div id="authScreen" class="card">
-  <div class="authhead"><h2>Nitish Finance OS</h2><div style="opacity:.7;font-size:13px">Sign in to sync your data</div></div>
+  <div class="authhead"><h2>Finance Calculator</h2><div style="opacity:.7;font-size:13px">Sign in to sync your data</div></div>
   <input id="authEmail" type="email" placeholder="Email">
   <input id="authPass" type="password" placeholder="Password">
   <div id="authError" class="error"></div>
@@ -87,7 +87,7 @@ button{background:#16a34a;color:#fff;font-weight:bold;cursor:pointer}
 <div id="appScreen" class="hidden">
 <div class="header">
 <div class="row" style="align-items:center">
-  <div style="font-size:12px;letter-spacing:2px">NITISH FINANCE OS PRO</div>
+  <div style="font-size:12px;letter-spacing:2px">FINANCE CALCULATOR</div>
   <div style="font-size:10px;opacity:.6;margin-top:2px">✅ Synced via GitHub</div>
   <button class="logout" onclick="logout()">Log out</button>
 </div>
@@ -782,7 +782,7 @@ function exportCSV(){
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `nitish-finance-backup-${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `finance-calculator-backup-${new Date().toISOString().slice(0,10)}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
