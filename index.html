@@ -165,6 +165,19 @@ svg.i{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke
 .badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;background:var(--green-soft);color:var(--green)}
 .badge.amber{background:var(--amber-soft);color:var(--amber)}
 .badge.red{background:var(--red-soft);color:var(--red)}
+.review{border-color:rgba(245,165,36,.45);background:linear-gradient(180deg,rgba(245,165,36,.08),transparent 60%),var(--surface)}
+.rv{display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);padding-top:6px;margin-top:6px}
+.rv-main{flex:1;min-width:0;display:flex;align-items:center;gap:12px;text-align:left;padding:6px 2px;border-radius:12px}
+.rv-main:active{background:var(--surface2)}
+.rv-ok{width:44px;height:44px;border-radius:14px;background:var(--green);color:#04140A;font-size:20px;font-weight:700;flex-shrink:0}
+.cp{display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:10px 10px 10px 12px;margin-top:8px}
+.cp-l{font-size:12px;color:var(--muted);flex-shrink:0;width:96px}
+.cp-v{flex:1;min-width:0;font-size:13px;font-family:ui-monospace,Menlo,monospace;word-break:break-all}
+.steps{padding-left:20px;margin:6px 0 4px;line-height:1.55;font-size:14px}
+.steps li{margin-bottom:8px}
+.nl{position:relative;display:inline-block}
+.nbadge{position:absolute;top:-30px;right:-14px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--amber);color:#1a1205;font-size:11px;font-weight:700;font-style:normal;line-height:18px;text-align:center}
+@media (min-width:900px){ .nbadge{top:-2px;right:-26px} }
 .person .badge{flex-shrink:0;white-space:nowrap}
 
 /* ---------- more / lists ---------- */
@@ -275,7 +288,7 @@ svg.i{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke
   <nav class="nav">
     <div class="brand"><div class="logo">₹</div>Finance</div>
     <button class="btn btn-primary btn-sm add-desk" onclick="openTx()">＋ Add transaction</button>
-    <a data-view="home" onclick="go('home')"><svg class="i" viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7V20a1 1 0 0 1-1 1h-5v-6h-5v6h-5a1 1 0 0 1-1-1z"/></svg>Home</a>
+    <a data-view="home" onclick="go('home')"><svg class="i" viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7V20a1 1 0 0 1-1 1h-5v-6h-5v6h-5a1 1 0 0 1-1-1z"/></svg><span class="nl">Home<i class="nbadge hidden" id="homeBadge"></i></span></a>
     <a data-view="activity" onclick="go('activity')"><svg class="i" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h8"/><circle cx="4" cy="6" r=".6"/><circle cx="4" cy="12" r=".6"/><circle cx="4" cy="18" r=".6"/></svg>Activity</a>
     <button class="fab" onclick="openTx()" aria-label="Add transaction">+</button>
     <a data-view="clients" onclick="go('clients')"><svg class="i" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.7a3.5 3.5 0 0 1 0 6.6M18.6 14.9c1.5.8 2.5 2.4 2.9 5.1"/></svg>Clients</a>
@@ -385,7 +398,12 @@ function go(v){
 function renderView(v){
   ({ home:renderHome, activity:renderActivity, clients:renderClients, loans:renderLoans, more:renderMore, import:renderImport }[v] || renderHome)();
 }
-function renderAll(){ renderView(view); }
+function renderAll(){ renderView(view); updateBadge(); }
+function updateBadge(){
+  const b = $("homeBadge"); if(!b) return;
+  const n = typeof inboxItems === "function" ? inboxItems().length : 0;
+  b.textContent = n; b.classList.toggle("hidden", !n);
+}
 function shiftMonth(n){
   const d = new Date(month.y, month.m + n, 1);
   const lim = new Date(); if(d > new Date(lim.getFullYear(), lim.getMonth(), 1)) return;
@@ -444,9 +462,10 @@ async function onLoggedIn(user){
   // a link ending in #activity, #clients, #debts, #more or #import opens that screen; #add opens the add sheet
   const h = location.hash.slice(1);
   go(["activity","clients","loans","more","import"].includes(h) ? h : "home");
-  await Promise.all([loadClients(), loadOwes(), loadTx(), detectSchema()]);
+  await Promise.all([loadClients(), loadOwes(), loadTx(), detectSchema(), loadInbox()]);
   renderAll();
   if(h === "add") openTx();
+  if(h.startsWith("sms=")) openSmsFromHash();
 }
 async function logout(){
   await sb.auth.signOut();
@@ -524,6 +543,7 @@ function renderHome(){
       <div><div class="hello">${greeting()}</div><h1>Overview</h1></div>
       <div style="display:flex;gap:8px;align-items:center">${monthSwitch()}<button class="gear" onclick="go('more')" aria-label="Settings">⚙️</button></div>
     </header>
+    ${reviewCardHtml()}
     <div class="home-grid">
       <div>
         <div class="hero">
@@ -946,23 +966,28 @@ async function savePay(id){
   if(!amt){ toast("Enter an amount"); return; }
   if(amt > left + 0.001){ toast("That's more than the " + money(left) + " left"); return; }
   const dv = $("pDate").value || ymd(new Date()); const [y, m, d] = dv.split("-").map(Number);
-  const emi = hasLoanCols ? Number(o.emi_amount) || 0 : 0;
-  const row = { user_id: currentUser.id, type: "Expense", cat: "EMI/Debt", amt, client_id: null, payment_type: null,
-    note: (emi && Math.abs(amt - emi) < 0.01 ? "EMI" : "Repayment") + " · " + o.name,
-    created_at: (dv === ymd(new Date()) ? new Date() : new Date(y, m - 1, d, 12)).toISOString() };
-  if(hasDebtLink) row.debt_id = o.id;
   $("pSave").disabled = true;
-  const r = await writeTx("insert", row);
-  if(r.error){ $("pSave").disabled = false; toast("Couldn't save: " + r.error.message); return; }
-  const u = await sb.from("debts").update({ paid_amount: Math.min(Number(o.total_amount), Number(o.paid_amount) + amt) }).eq("id", id).select();
-  if(u.error){                                       // keep both in step: undo the payment if the loan didn't update
-    await sb.from("transactions").delete().eq("id", r.data[0].id);
-    $("pSave").disabled = false; toast("Couldn't save: " + u.error.message); return;
-  }
-  tx.push(r.data[0]); Object.assign(o, u.data[0]);
+  const ok = await recordLoanPayment(o, amt, (dv === ymd(new Date()) ? new Date() : new Date(y, m - 1, d, 12)).toISOString());
+  if(!ok){ if($("pSave")) $("pSave").disabled = false; return; }
   closeSheet(); renderAll();
   const nl = loanLeft(o);
   toast(nl > 0 ? `${money(amt)} paid · ${money(nl)} left` : `${o.name} is fully paid 🎉`);
+}
+// saves a payment towards a loan: one EMI/Debt transaction (linked to the loan) + the loan's paid amount, kept in step
+async function recordLoanPayment(o, amt, createdAt, extra){
+  const emi = hasLoanCols ? Number(o.emi_amount) || 0 : 0;
+  const row = { user_id: currentUser.id, type: "Expense", cat: "EMI/Debt", amt, client_id: null, payment_type: null,
+    note: [(emi && Math.abs(amt - emi) < 0.01 ? "EMI" : "Repayment") + " · " + o.name, extra].filter(Boolean).join(" · "), created_at: createdAt };
+  if(hasDebtLink) row.debt_id = o.id;
+  const r = await writeTx("insert", row);
+  if(r.error){ toast("Couldn't save: " + r.error.message); return false; }
+  const u = await sb.from("debts").update({ paid_amount: Math.min(Number(o.total_amount), Number(o.paid_amount) + amt) }).eq("id", o.id).select();
+  if(u.error){                                        // undo the payment if the loan didn't update
+    await sb.from("transactions").delete().eq("id", r.data[0].id);
+    toast("Couldn't save: " + u.error.message); return false;
+  }
+  tx.push(r.data[0]); Object.assign(o, u.data[0]);
+  return true;
 }
 // editing or deleting a payment that belongs to a loan moves the loan's paid amount with it
 async function adjustLoanPaid(debtId, delta){
@@ -1012,6 +1037,7 @@ function renderMore(){
     <button class="back" onclick="go('home')">‹ Home</button>
     <header class="top"><div><div class="hello">${esc(currentUser ? currentUser.email : "")}</div><h1>Settings</h1></div></header>
     <div class="list">
+      <button class="li" onclick="openSmsSetup()"><span class="ico">💬</span><span class="t"><b>iPhone SMS setup</b><small>Save payments from Kotak and Union SMS</small></span><span class="chev">›</span></button>
       <button class="li" onclick="go('import')"><span class="ico">📄</span><span class="t"><b>Import a statement</b><small>PhonePe, Google Pay, Paytm or bank PDF</small></span><span class="chev">›</span></button>
       <button class="li" onclick="exportCSV()"><span class="ico">⬇️</span><span class="t"><b>Download backup</b><small>All transactions as a CSV file</small></span><span class="chev">›</span></button>
       <button class="li" onclick="openInstall()"><span class="ico">📱</span><span class="t"><b>Add to iPhone home screen</b><small>Open it like an app</small></span><span class="chev">›</span></button>
@@ -1217,6 +1243,244 @@ async function importSelected(){
 }
 
 // ======================================================
+// PAYMENTS FROM BANK SMS
+// The iPhone automation (1) drops each Kotak / Union SMS into your private inbox (works even when the phone is
+// locked) and (2) opens  <site>/#sms=<the SMS text>  so you can categorize it right away if you have a moment.
+// Anything you don't categorize waits under "To review" on Home and is not counted until you approve it.
+// ======================================================
+// Kotak: "Sent Rs.205.00 from Kotak Bank A/c X1234 to NAME on 23-11-26. UPI Ref 9865..."
+//        "Received Rs.10000.00 in your Kotak Bank AC 1234 from NAME on 20-11-26.UPI Ref:6349..."
+// Union: "Union Bank of India A/c*1234 Dr Rs3500.00 on 23-11-26 11:43 by MB 1332... Fv.NAME, Bal Rs..."
+//        "A/c *1234 Credited for Rs:10000.00 on 23-11-2026 11:40:43 by Mob Bk ref no 6327... Avl Bal Rs:..."
+function parseBankSms(sms){
+  const t = String(sms || "").replace(/\s+/g, " ").trim();
+  const out = { type: "", amount: 0, party: "", account: "", ref: "", text: t };
+  if(!t) return out;
+  // keep only the transaction part: drop balance, fraud warnings and links
+  const body = t.split(/\b(?:Not done by you|Not U\?|Not you|If not you|Avl\.? Bal|Bal(?:ance)? Rs|Never Share|https?:\/\/)/i)[0];
+  const outAt = body.search(/\b(?:sent|debited|paid|spent|withdrawn|dr)\b/i);
+  const inAt = body.search(/\b(?:received|credited|deposited|cr)\b/i);
+  if(outAt >= 0 && (inAt < 0 || outAt < inAt)) out.type = "Expense"; else if(inAt >= 0) out.type = "Income";
+  const m = body.match(/(?:rs|inr|₹)\s*[.:]?\s*([\d,]+(?:\.\d{1,2})?)/i);
+  if(m) out.amount = parseFloat(m[1].replace(/,/g, ""));
+  if(/kotak/i.test(t)) out.account = "Kotak"; else if(/union bank/i.test(t)) out.account = "Union";
+  const r = body.match(/(?:UPI\s*Ref(?:\s*No)?|Ref\s*No|RefNo|Ref)\s*[:.#]?\s*(\d{6,})/i) ||
+            body.match(/\bby\s+(?:MB|Mob\s*Bk|UPI|IMPS|NEFT)\s+(?:ref\s*no\s*)?(\d{6,})/i) || body.match(/\b(\d{12})\b/);
+  if(r) out.ref = r[1];
+  const tries = out.type === "Income"
+    ? [/\bfrom\s+(?:VPA\s+)?(.+?)\s+on\s+\d/i, /\bfrom\s+(?:VPA\s+)?([^.,;]+)/i]
+    : [/\bto\s+(?:VPA\s+)?(.+?)\s+on\s+\d/i, /\bby\s+(?:MB|UPI|IMPS|NEFT)\s+\d{6,}\s+([^,]+)/i, /;\s*(.+?)\s+credited/i, /\btrf to\s+(.+?)\s+ref/i, /\bto\s+(?:VPA\s+)?([^.,;]+)/i];
+  for(const re of tries){ const x = body.match(re); if(x && !/^\d+$/.test(x[1].trim())){ out.party = x[1]; break; } }
+  out.party = out.party.replace(/^(?:Fv|Fav|Favour)[.:\s]+/i, "").replace(/[.\s]+$/, "").trim();
+  return out;
+}
+function titleCase(s){ return String(s || "").toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase()); }
+function matchClient(p){
+  const lower = titleCase(p.party).toLowerCase();
+  if(p.type !== "Income" || !lower) return null;
+  const first = lower.split(" ")[0];
+  return clients.find(c => { const n = String(c.name).toLowerCase(); return n.includes(lower) || lower.includes(n) || (first.length > 2 && n.includes(first)); }) || null;
+}
+function suggestCat(p){
+  if(p.type === "Income") return matchClient(p) ? "Freelance Payment" : (p.party ? guessCategory(titleCase(p.party), "Income") : "Other");
+  return p.party ? guessCategory(titleCase(p.party), "Expense") : "Other";
+}
+
+// ---------- inbox (needs supabase/sms_inbox.sql) ----------
+let inbox = [], hasInbox = false;
+async function loadInbox(){
+  const { data, error } = await sb.from("sms_inbox").select("*").order("received_at", { ascending: true });
+  hasInbox = !error; inbox = error ? [] : (data || []);
+}
+function inboxItems(){
+  return inbox.map(i => ({ i, p: parseBankSms(i.sms), when: new Date(i.received_at) })).filter(x => x.p.amount > 0 && x.p.type);
+}
+async function removeInbox(ids){
+  ids = ids.filter(Boolean); if(!ids.length) return;
+  for(const id of ids) await sb.from("sms_inbox").delete().eq("id", id);
+  inbox = inbox.filter(i => !ids.includes(i.id));
+}
+function inboxIdsFor(ref, id){ return inbox.filter(i => i.id === id || (ref && i.ref === ref)).map(i => i.id); }
+
+function reviewCardHtml(){
+  const items = inboxItems();
+  if(!items.length) return "";
+  const out = items.filter(x => x.p.type === "Expense").reduce((s,x) => s + x.p.amount, 0);
+  const inc = items.filter(x => x.p.type === "Income").reduce((s,x) => s + x.p.amount, 0);
+  return `<div class="card review">
+    <div class="card-h"><h3>📥 ${items.length} payment${items.length > 1 ? "s" : ""} to review</h3>
+      ${items.length > 1 ? `<button class="link" onclick="approveAll()">Approve all</button>` : ""}</div>
+    <div class="muted" style="font-size:13px;margin:-6px 2px 4px">${[out ? money(out) + " out" : "", inc ? money(inc) + " in" : ""].filter(Boolean).join(" · ")}, from your bank SMS. Not counted until you approve.</div>
+    ${items.map(reviewRow).join("")}
+  </div>`;
+}
+function reviewRow({ i, p, when }){
+  const cat = suggestCat(p), c = catMeta(cat, p.type), isIn = p.type === "Income";
+  return `<div class="rv">
+    <button class="rv-main" onclick="reviewInbox('${esc(i.id)}')">
+      <span class="ico" style="background:${c.color}22">${c.icon}</span>
+      <span class="tx-main"><span class="tx-title"><span class="${isIn ? "paid" : ""}">${isIn ? "+" : "−"}${money(p.amount)}</span> · ${esc(titleCase(p.party) || (isIn ? "Money in" : "Payment"))}</span>
+        <span class="tx-sub">${esc(cat)} · ${esc(p.account || "Bank")} · ${esc(dayLabel(when))}, ${esc(timeLabel(when))}</span></span>
+    </button>
+    <button class="rv-ok" onclick="approveInbox('${esc(i.id)}')" aria-label="Approve">✓</button>
+  </div>`;
+}
+function needsChoice(p){ return suggestCat(p) === "EMI/Debt" && owes.some(o => loanLeft(o) > 0); }
+async function approveInbox(id, quiet){
+  const x = inboxItems().find(y => y.i.id === id); if(!x) return false;
+  if(needsChoice(x.p)){ reviewInbox(id); return false; }               // an EMI needs you to pick the loan
+  const cat = suggestCat(x.p), cl = matchClient(x.p), isIn = x.p.type === "Income";
+  const row = { user_id: currentUser.id, type: x.p.type, cat, amt: x.p.amount,
+                note: [titleCase(x.p.party), x.p.account].filter(Boolean).join(" · ") || "From bank SMS",
+                client_id: isIn && cl ? cl.id : null, payment_type: isIn ? "Full" : null, created_at: x.when.toISOString() };
+  const r = await writeTx("insert", row);
+  if(r.error){ toast("Couldn't save: " + r.error.message); return false; }
+  tx.push(r.data[0]); await removeInbox([id]);
+  if(!quiet){ renderAll(); toast(`Approved ${money(x.p.amount)} · ${cat}`); }
+  return true;
+}
+async function approveAll(){
+  let n = 0, skipped = 0;
+  for(const x of inboxItems()){
+    if(needsChoice(x.p)){ skipped++; continue; }
+    if(await approveInbox(x.i.id, true)) n++;
+  }
+  renderAll();
+  toast(`${n} approved` + (skipped ? ` · ${skipped} EMI${skipped > 1 ? "s" : ""} left to match with a loan` : ""));
+}
+function reviewInbox(id){
+  const x = inboxItems().find(y => y.i.id === id); if(!x) return;
+  openSmsSheet(x.p, { inboxId: id, when: x.when });
+}
+
+// ---------- the quick-save sheet (from the SMS link, or Edit in To review) ----------
+let smsForm = null;
+function openSmsFromHash(){
+  let raw = location.hash.slice(5);
+  if(!/%20/.test(raw)) raw = raw.replace(/\+/g, " ");
+  try{ raw = decodeURIComponent(raw); }catch(e){}
+  history.replaceState(null, "", location.pathname + location.search);   // so a reload doesn't open it again
+  const p = parseBankSms(raw);
+  if(!p.amount || !p.type){ toast("That SMS doesn't look like a payment"); return; }
+  const queued = inbox.find(i => p.ref && i.ref === p.ref);              // the automation already put it in the inbox
+  openSmsSheet(p, { inboxId: queued ? queued.id : null, when: queued ? new Date(queued.received_at) : new Date() });
+}
+window.addEventListener("hashchange", () => { if(currentUser && location.hash.startsWith("#sms=")) openSmsFromHash(); });
+
+function openSmsSheet(p, opts){
+  opts = opts || {};
+  const party = titleCase(p.party), isIn = p.type === "Income", client = matchClient(p);
+  const when = opts.when || new Date();
+  // probably already saved: same amount and direction within 2 hours of this SMS
+  const dup = tx.find(t => t.type === p.type && Math.abs(Number(t.amt) - p.amount) < 0.01 && Math.abs(txDate(t) - when) < 2 * 3600e3);
+  smsForm = { p, party, client: client ? client.id : "", pay: "Full", guess: suggestCat(p), inboxId: opts.inboxId || null, when };
+  const bank = p.account ? p.account + " Bank" : "your bank";
+  const ago = Date.now() - when < 120e3 ? "just now" : dayLabel(when) + ", " + timeLabel(when);
+  openSheet(`
+    <div class="sheet-h"><h2>${opts.inboxId && Date.now() - when > 120e3 ? "Review payment" : isIn ? "Money received" : "New payment"}</h2><button class="x" onclick="closeSheet()" aria-label="Close">✕</button></div>
+    <div class="muted" style="font-size:13px">From ${esc(bank)} SMS · ${esc(ago)}</div>
+    <div class="amount" style="border-bottom:0;padding-bottom:0"><span>₹</span><input id="sAmt" type="text" inputmode="decimal" value="${esc(p.amount)}" style="color:${isIn ? "var(--green)" : "var(--text)"}"></div>
+    <div style="font-size:15px;margin:2px 2px 0">${isIn ? "from" : "to"} <b>${esc(party || "someone")}</b></div>
+    ${dup ? `<div class="demo-bar" style="margin:12px 0 0">You already saved ${money(p.amount)} ${isIn ? "money in" : "money out"} around this time. If it's the same payment, remove this one below.</div>` : ""}
+    <label class="field"><span>What was it for? (optional)</span><input class="input" id="sNote" placeholder="e.g. lunch with team" autocomplete="off"></label>
+    ${isIn && clients.length ? `<div class="row2">
+      <label class="field"><span>Client</span><select class="input" id="sClient" onchange="smsForm.client=this.value"><option value="">No client</option>${clients.map(c => `<option value="${esc(c.id)}" ${smsForm.client === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
+      <label class="field"><span>Payment</span><select class="input" id="sPay" onchange="smsForm.pay=this.value">${PAY_TYPES.map(x => `<option ${x === "Full" ? "selected" : ""}>${x}</option>`).join("")}</select></label>
+    </div>` : ""}
+    <div class="field"><span>Tap a category to save</span><div class="cats" id="sCats"></div></div>
+    <div id="sLoans"></div>
+    ${opts.inboxId ? `<div class="sheet-actions">
+      <button class="btn btn-soft" onclick="closeSheet()">Decide later</button>
+      <button class="btn btn-danger" onclick="armThen(this, () => dismissSms())">Remove, not a real payment</button></div>` : ""}`);
+  paintSmsCats();
+}
+function paintSmsCats(){
+  const f = smsForm, list = f.p.type === "Income" ? IN_CATS : OUT_CATS;
+  const sug = f.guess && f.guess !== "Other" ? f.guess : "";
+  $("sCats").innerHTML = list.map(([n, ic]) => `<button class="cat ${n === sug ? "on" : ""}" onclick="pickSmsCat(${esc(JSON.stringify(n))})"><span class="em">${ic}</span>${esc(n)}${n === sug ? `<small style="color:var(--green);font-size:10px">suggested</small>` : ""}</button>`).join("");
+}
+function smsNote(){
+  const f = smsForm, extra = ($("sNote") && $("sNote").value.trim()) || "";
+  return [f.party, extra, f.p.account].filter(Boolean).join(" · ");
+}
+async function pickSmsCat(cat){
+  const f = smsForm, amt = num($("sAmt").value);
+  if(!amt){ toast("Enter an amount"); return; }
+  const open = owes.filter(o => loanLeft(o) > 0);
+  if(cat === "EMI/Debt" && f.p.type !== "Income" && open.length){       // which loan was this?
+    $("sLoans").innerHTML = `<div class="field"><span>Which loan did you pay?</span><div class="chips" style="flex-wrap:wrap">
+      ${open.map(o => `<button class="chip" onclick="saveSmsLoan('${esc(o.id)}')">${loanKind(o)[1]} ${esc(o.name)}${hasLoanCols && o.emi_amount ? " · " + money(o.emi_amount) : ""}</button>`).join("")}
+      <button class="chip" onclick="saveSms('EMI/Debt')">Not one of these</button></div></div>`;
+    $("sLoans").scrollIntoView({ behavior: "smooth", block: "end" });
+    return;
+  }
+  await saveSms(cat);
+}
+async function saveSms(cat){
+  const f = smsForm, amt = num($("sAmt").value), isIn = f.p.type === "Income";
+  const row = { user_id: currentUser.id, type: f.p.type, cat, amt, note: smsNote() || "From bank SMS",
+                client_id: isIn ? (f.client || null) : null, payment_type: isIn ? f.pay : null, created_at: f.when.toISOString() };
+  const r = await writeTx("insert", row);
+  if(r.error){ toast("Couldn't save: " + r.error.message); return; }
+  tx.push(r.data[0]); await removeInbox(inboxIdsFor(f.p.ref, f.inboxId));
+  closeSheet(); renderAll();
+  toast(`Saved ${money(amt)} · ${cat}`);
+}
+async function saveSmsLoan(id){
+  const o = owes.find(x => x.id === id), f = smsForm, amt = num($("sAmt").value); if(!o) return;
+  const ok = await recordLoanPayment(o, Math.min(amt, loanLeft(o)), f.when.toISOString(), [f.party, f.p.account].filter(Boolean).join(" · "));
+  if(!ok) return;
+  await removeInbox(inboxIdsFor(f.p.ref, f.inboxId));
+  closeSheet(); renderAll();
+  const nl = loanLeft(o);
+  toast(nl > 0 ? `${o.name}: ${money(amt)} paid · ${money(nl)} left` : `${o.name} is fully paid 🎉`);
+}
+async function dismissSms(){
+  await removeInbox(inboxIdsFor(smsForm.p.ref, smsForm.inboxId));
+  closeSheet(); renderAll(); toast("Removed from To review");
+}
+
+// ---------- iPhone setup: private key + the automation recipe ----------
+const SMS_ENDPOINT = SUPABASE_URL + "/rest/v1/rpc/add_sms";
+function copyText(s, label){
+  (navigator.clipboard ? navigator.clipboard.writeText(s) : Promise.reject()).then(() => toast((label || "Text") + " copied"), () => toast("Couldn't copy, select it and copy by hand"));
+}
+function copyRow(label, value, display){
+  return `<div class="cp"><div class="cp-l">${esc(label)}</div><div class="cp-v">${esc(display || value)}</div><button class="btn btn-soft btn-sm" onclick="copyText(${esc(JSON.stringify(value))}, ${esc(JSON.stringify(label))})">Copy</button></div>`;
+}
+function openSmsSetup(key){
+  const site = location.origin + location.pathname.replace(/index\.html$/, "");
+  openSheet(`
+    <div class="sheet-h"><h2>iPhone SMS setup</h2><button class="x" onclick="closeSheet()" aria-label="Close">✕</button></div>
+    ${!hasInbox ? `<div class="demo-bar" style="margin-bottom:12px">The payment inbox needs a one-time database update first (supabase/sms_inbox.sql).</div>` : ""}
+    <p class="muted" style="margin-top:0;font-size:14px">Do this on your iPhone, in Safari, while logged in here. It takes about 5 minutes, once.</p>
+    <div class="section-t">1 · Your private key</div>
+    ${key ? copyRow("Private key (shown only now)", key)
+          : `<p class="muted" style="font-size:13.5px;margin:0 0 8px">The iPhone uses this key to drop bank SMS into your To-review list. Making a new key stops the old one.</p>
+             <button class="btn btn-primary" ${hasInbox ? "" : "disabled"} onclick="makeSmsKey()">Create my private key</button>`}
+    <div class="section-t">2 · Two automations in the Shortcuts app</div>
+    <ol class="steps">
+      <li><b>Automation → ＋ → Message</b>. Message Contains: <b>UPI Ref</b> (Kotak). Choose <b>Run Immediately</b> → Next → New Blank Automation.</li>
+      <li>Add <b>Get Contents of URL</b>, tap “Show More”: Method <b>POST</b>; Headers: <b>apikey</b> = the key below; Request Body <b>JSON</b> with <b>p_key</b> = your private key and <b>p_sms</b> = <b>Shortcut Input</b>.</li>
+      <li>Add <b>URL Encode</b> → Shortcut Input. Then <b>Text</b>: the site link below + the <b>URL Encoded Text</b>. Then <b>Open URLs</b>. Done.</li>
+      <li>Make a second automation the same way with Message Contains: <b>Bal Rs</b> (Union Bank).</li>
+    </ol>
+    ${copyRow("URL for Get Contents of URL", SMS_ENDPOINT)}
+    ${copyRow("apikey header value", SUPABASE_ANON_KEY, SUPABASE_ANON_KEY.slice(0, 22) + "…")}
+    ${copyRow("Site link for the Text action", site + "#sms=")}
+    <p class="muted" style="font-size:13px">Test it with a ₹1 UPI payment. If the phone is locked, the payment waits in To review on Home.</p>`);
+}
+async function makeSmsKey(){
+  const b = crypto.getRandomValues(new Uint8Array(18));
+  const key = btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key)))).map(x => x.toString(16).padStart(2, "0")).join("");
+  const { error } = await sb.from("inbox_keys").upsert({ user_id: currentUser.id, key_hash: hash, created_at: new Date().toISOString() });
+  if(error){ toast("Couldn't create the key: " + error.message); return; }
+  openSmsSetup(key);
+  toast("Private key created");
+}
+
+// ======================================================
 // SHEET
 // ======================================================
 function openSheet(html){
@@ -1267,13 +1531,19 @@ function demoClient(){
     { id: "d3", user_id: user.id, name: "Camera (Canon R50)", kind: "EMI", total_amount: 36000, paid_amount: 21000, emi_amount: 3000, due_day: 18, note: "No-cost EMI", created_at: day(150, 10) },
     { id: "d4", user_id: user.id, name: "Ravi (friend)", kind: "Borrowed", total_amount: 3000, paid_amount: 1000, emi_amount: null, due_day: null, note: "Return by Dec", created_at: day(30, 10) },
   ];
-  const db = { transactions: txs, clients: cl, debts };
+  const inboxRows = [
+    { id: "i1", user_id: user.id, ref: "986568861390", received_at: day(0, 8), sms: "Sent Rs.120.00 from Kotak Bank A/c X0000 to CHAI POINT on 23-11-26. UPI Ref 986568861390. Not done by you? Tap https://kotak.bank.in/KBANKT/Fraud" },
+    { id: "i2", user_id: user.id, ref: "634901102755", received_at: day(0, 11), sms: "Received Rs.9000.00 in your Kotak Bank AC 0000 from CAFE BLOOM on 23-11-26.UPI Ref:634901102755" },
+    { id: "i3", user_id: user.id, ref: "133236282432", received_at: day(0, 12), sms: "Union Bank of India A/c*0000 Dr Rs3500.00 on 23-11-26 11:43 by MB 133236282432 Fv.Apollo Pharmacy, Bal Rs20500.73 Not U?Call 18002333/SMS BLOCK 0000 to 0000000000" },
+  ];
+  const db = { transactions: txs, clients: cl, debts, sms_inbox: inboxRows, inbox_keys: [] };
   function q(table){
     let op = "select", payload = null; const filters = [];
     const api = {
       select(){ return api; }, order(){ return api; }, limit(){ return api; },
       insert(p){ op = "insert"; payload = Array.isArray(p) ? p : [p]; return api; },
       update(p){ op = "update"; payload = p; return api; },
+      upsert(p){ op = "upsert"; payload = Array.isArray(p) ? p : [p]; return api; },
       delete(){ op = "delete"; return api; },
       eq(c, v){ filters.push([c, v]); return api; },
       then(res, rej){
@@ -1281,6 +1551,7 @@ function demoClient(){
         if(op === "select") data = rows.slice();
         if(op === "insert"){ data = payload.map(r => ({ id: id(), created_at: new Date().toISOString(), client_id: null, payment_type: null, ...r })); rows.push(...data); }
         if(op === "update"){ rows.forEach(r => { if(match(r)) { Object.assign(r, payload); data.push({ ...r }); } }); }
+        if(op === "upsert"){ payload.forEach(p => { const ex = rows.find(r => r.user_id === p.user_id); if(ex) Object.assign(ex, p); else rows.push({ ...p }); data.push({ ...p }); }); }
         if(op === "delete"){ db[table] = rows.filter(r => !match(r)); }
         return Promise.resolve({ data: JSON.parse(JSON.stringify(data)), error: null }).then(res, rej);
       }
