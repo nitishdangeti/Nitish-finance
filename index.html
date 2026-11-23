@@ -1,816 +1,1302 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Finance Calculator</title>
+<meta name="theme-color" content="#0B0F14">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Finance">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
-*{box-sizing:border-box}
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#000;color:#fff;padding:16px}
-.wrap{max-width:480px;margin:auto}
-.card{background:#111827;border-radius:22px;padding:16px;margin-bottom:16px}
-.header{background:linear-gradient(135deg,#065f46,#16a34a);border-radius:28px;padding:20px;margin-bottom:16px}
-input,select,button{width:100%;padding:14px;border:none;border-radius:12px;margin:8px 0;font-size:16px}
-input,select{background:#1f2937;color:#fff}
-button{background:#16a34a;color:#fff;font-weight:bold;cursor:pointer}
-.item{background:#1f2937;padding:12px;border-radius:12px;margin-top:8px}
-.row{display:flex;justify-content:space-between}
-.del{background:#7f1d1d;color:#fff;width:auto;padding:6px 10px;border-radius:8px;font-size:12px;margin-top:8px;font-weight:normal}
-.reset{background:#374151;color:#fff;margin-top:4px}
-.logout{background:#374151;color:#fff;width:auto;padding:8px 14px;font-size:13px}
-.hidden{display:none}
-.error{color:#f87171;font-size:13px;margin-top:-4px}
-.toplink{background:none;color:#22c55e;text-decoration:underline;font-weight:normal;font-size:14px;padding:4px}
-.authhead{text-align:center;margin-bottom:8px}
-.clientCard{background:#1f2937;padding:12px;border-radius:12px;margin-top:8px}
-.pending{color:#f59e0b;font-weight:bold}
-.paidfull{color:#22c55e;font-weight:bold}
-.tag{display:inline-block;background:#065f46;color:#a7f3d0;font-size:11px;padding:2px 8px;border-radius:8px;margin-top:6px}
-.bar{background:#374151;border-radius:8px;height:8px;margin-top:8px;overflow:hidden}
-.barfill{background:#22c55e;height:100%}
-.owesCard{background:#1f2937;padding:12px;border-radius:12px;margin-top:8px}
-.owebarfill{background:#f59e0b;height:100%}
-.repayBtn{background:#065f46;width:auto;padding:8px 12px;font-size:13px;font-weight:normal;margin-top:8px}
+:root{
+  --bg:#0B0F14; --surface:#121821; --surface2:#18202B; --line:#222C38; --line2:#2C3846;
+  --text:#E9EEF4; --muted:#8C98A8; --faint:#5D6876;
+  --green:#22C55E; --green-d:#16A34A; --green-soft:rgba(34,197,94,.14);
+  --red:#F05252; --red-soft:rgba(240,82,82,.14);
+  --amber:#F5A524; --amber-soft:rgba(245,165,36,.14);
+  --radius:18px; --nav-h:68px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text)}
+body{font:15px/1.45 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;padding:0}
+.hidden{display:none!important}
+.muted{color:var(--muted)}
+h1,h2,h3{margin:0;font-weight:650;letter-spacing:-.01em}
+h1{font-size:26px}
+h3{font-size:15px}
 
-/* ---------- Tab bar ---------- */
-.tabbar{display:flex;gap:8px;margin-bottom:16px}
-.tabbtn{flex:1;background:#111827;color:#9ca3af;font-weight:bold;padding:12px;border-radius:14px;margin:0;border:1px solid #1f2937}
-.tabbtn.active{background:#16a34a;color:#fff;border-color:#16a34a}
-.tabpanel{display:none}
-.tabpanel.active{display:block}
-.empty{opacity:.6;font-size:14px;text-align:center;padding:20px 0}
+/* ---------- buttons & fields ---------- */
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:52px;border-radius:14px;font-weight:600;font-size:16px;transition:transform .08s,opacity .15s}
+.btn:active{transform:scale(.98)}
+.btn-primary{background:var(--green);color:#04140A}
+.btn-soft{background:var(--surface2);border:1px solid var(--line)}
+.btn-danger{background:var(--red-soft);color:var(--red);border:1px solid rgba(240,82,82,.3)}
+.btn-danger.armed{background:var(--red);color:#fff}
+.btn-sm{height:38px;width:auto;padding:0 14px;font-size:14px;border-radius:11px}
+.link{color:var(--green);font-weight:600;font-size:14px}
+.field{display:block;margin:14px 0 0}
+.field>span{display:block;font-size:13px;color:var(--muted);margin:0 0 6px 2px}
+.input{width:100%;height:50px;padding:0 14px;border-radius:13px;border:1px solid var(--line);background:var(--surface2);font-size:16px;outline:none;transition:border-color .15s}
+.input:focus{border-color:var(--green)}
+select.input{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 20px) 22px,calc(100% - 15px) 22px;background-size:5px 5px;background-repeat:no-repeat;padding-right:36px}
+.error{color:var(--red);font-size:13px;min-height:18px;margin-top:8px}
+.ok{color:var(--green)}
 
-/* ---------- Desktop / laptop layout ---------- */
-@media (min-width: 900px){
-  body{padding:32px}
-  #authScreen.card{max-width:420px;margin:80px auto}
-  .wrap{max-width:1100px}
-  .header{margin-bottom:20px}
-  .tabbar{max-width:520px;margin:0 auto 20px auto}
-  #panels{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:20px;
-    align-items:start;
-  }
-  /* On desktop, show Clients + Add Transaction side by side; Overview spans full width */
-  #panel-overview.active{grid-column:1 / -1}
-  button:hover{opacity:0.9}
+/* ---------- auth ---------- */
+.auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.auth-card{width:100%;max-width:400px;background:var(--surface);border:1px solid var(--line);border-radius:24px;padding:28px 22px}
+.logo{width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,#16A34A,#22C55E);display:grid;place-items:center;font-size:28px;font-weight:700;color:#04140A;margin:0 auto 14px}
+.auth h2{text-align:center;font-size:22px}
+.auth p{text-align:center;margin:6px 0 10px;color:var(--muted);font-size:14px}
+.auth .alt{display:flex;justify-content:space-between;margin-top:14px}
+
+/* ---------- app shell ---------- */
+.app main{max-width:560px;margin:0 auto;padding:calc(14px + env(safe-area-inset-top)) 16px calc(var(--nav-h) + 30px + env(safe-area-inset-bottom))}
+.view{display:none}
+.view.active{display:block;animation:fade .18s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:6px 0 16px}
+.hello{color:var(--muted);font-size:13px;margin-bottom:2px}
+.back{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-size:14px;margin-bottom:6px}
+
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:20;height:calc(var(--nav-h) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);display:flex;align-items:center;justify-content:space-around;background:rgba(11,15,20,.88);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line)}
+.nav .brand,.nav .add-desk,.nav .nav-foot{display:none}
+.nav a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;color:var(--faint);text-decoration:none;cursor:pointer;width:64px}
+.nav a svg{width:24px;height:24px}
+.nav a.active{color:var(--text)}
+.nav a.active svg{color:var(--green)}
+.nav a.desk-only{display:none}
+.fab{width:58px;height:58px;border-radius:20px;background:var(--green);color:#04140A;font-size:30px;font-weight:500;display:grid;place-items:center;margin-top:-26px;box-shadow:0 8px 24px rgba(34,197,94,.35),0 0 0 6px var(--bg)}
+.fab:active{transform:scale(.95)}
+svg.i{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- month switch ---------- */
+.month{display:inline-flex;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:999px;height:38px;flex-shrink:0}
+.month button{width:34px;height:36px;color:var(--muted);font-size:18px}
+.month button:disabled{opacity:.25}
+.month span{font-size:13px;font-weight:600;min-width:84px;text-align:center}
+.gear{width:38px;height:38px;border-radius:50%;background:var(--surface);border:1px solid var(--line);font-size:16px;flex-shrink:0}
+@media (min-width:900px){ .gear{display:none} }
+
+/* ---------- cards ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+.card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.hero{border-radius:24px;padding:20px;margin-bottom:14px;border:1px solid var(--line);background:radial-gradient(120% 140% at 0% 0%,rgba(34,197,94,.30),transparent 55%),radial-gradient(90% 120% at 100% 100%,rgba(34,197,94,.08),transparent 60%),var(--surface)}
+.hero .label{font-size:13px;color:#B9C4D0}
+.big{font-size:40px;font-weight:700;letter-spacing:-.02em;margin:2px 0 14px}
+.big.neg{color:var(--red)}
+.hero-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:rgba(11,15,20,.45);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:10px 12px}
+.stat .k{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.stat b{display:block;font-size:18px;margin-top:2px}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dot.in{background:var(--green)} .dot.out{background:var(--red)}
+.today{margin-top:12px;font-size:13px;color:#B9C4D0;display:flex;justify-content:space-between}
+.today b{color:var(--text)}
+
+/* donut + legend */
+.donut-wrap{display:flex;align-items:center;gap:16px}
+.donut{flex-shrink:0;width:128px;height:128px}
+.legend{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.lg{display:flex;align-items:center;gap:8px;font-size:13px}
+.lg .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lg .pc{color:var(--muted);width:34px;text-align:right}
+.sw{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+@media (max-width:520px){
+  .donut-wrap{flex-direction:column;align-items:stretch;gap:14px}
+  .donut{align-self:center;width:150px;height:150px}
+  .lg{font-size:14px}
+}
+.bars{width:100%;height:auto;display:block}
+.keys{display:flex;gap:12px;font-size:12px;color:var(--muted)}
+.keys span{display:inline-flex;align-items:center;gap:5px}
+
+/* ---------- transactions ---------- */
+.tx{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:10px 4px;border-radius:12px}
+.tx:active{background:var(--surface2)}
+.ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:19px;flex-shrink:0}
+.tx-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.tx-title{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx-sub{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx-amt{font-weight:650;font-size:15px;white-space:nowrap}
+.tx-amt.in{color:var(--green)} .tx-amt.out{color:var(--text)}
+.day{display:flex;justify-content:space-between;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:18px 4px 4px}
+.empty{text-align:center;color:var(--muted);font-size:14px;padding:26px 10px}
+.empty .e{font-size:30px;margin-bottom:6px}
+
+.search{position:relative;margin-bottom:10px}
+.search input{padding-left:40px}
+.search svg{position:absolute;left:13px;top:15px;width:20px;height:20px;color:var(--faint)}
+.seg{display:flex;background:var(--surface2);border:1px solid var(--line);border-radius:13px;padding:3px;gap:3px}
+.seg button{flex:1;height:38px;border-radius:10px;font-size:14px;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--surface);color:var(--text);box-shadow:0 1px 0 rgba(255,255,255,.04),0 2px 8px rgba(0,0,0,.3)}
+.seg button.on.out{color:var(--red)} .seg button.on.in{color:var(--green)}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:10px 0 4px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex-shrink:0;height:34px;padding:0 13px;border-radius:999px;background:var(--surface);border:1px solid var(--line);font-size:13px;font-weight:500;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+.chip.on{border-color:var(--green);color:var(--text);background:var(--green-soft)}
+
+/* ---------- clients & debts ---------- */
+.sum3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.sum3 .stat{background:var(--surface);border-color:var(--line)}
+.sum3 b{font-size:16px}
+.person{display:flex;align-items:center;gap:12px}
+.avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-weight:700;background:var(--surface2);border:1px solid var(--line2);flex-shrink:0}
+.pname{font-weight:650;font-size:16px}
+.psub{font-size:12.5px;color:var(--muted)}
+.prog{height:8px;background:var(--surface2);border-radius:99px;overflow:hidden;margin:14px 0 8px}
+.prog i{display:block;height:100%;background:var(--green);border-radius:99px}
+.prog.amber i{background:var(--amber)}
+.kv{display:flex;justify-content:space-between;font-size:13.5px;margin-top:4px}
+.kv .muted{font-size:13px}
+.pending{color:var(--amber);font-weight:600}
+.paid{color:var(--green);font-weight:600}
+.actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.actions .btn{flex:1;min-width:0;white-space:nowrap;padding:0 10px}
+.badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;background:var(--green-soft);color:var(--green)}
+.badge.amber{background:var(--amber-soft);color:var(--amber)}
+.badge.red{background:var(--red-soft);color:var(--red)}
+.person .badge{flex-shrink:0;white-space:nowrap}
+
+/* ---------- more / lists ---------- */
+.list{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:14px}
+.li{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;text-align:left;border-bottom:1px solid var(--line)}
+.li:last-child{border-bottom:0}
+.li:active{background:var(--surface2)}
+.li .ico{width:36px;height:36px;font-size:17px;background:var(--surface2)}
+.li .t{flex:1;min-width:0}
+.li .t b{display:block;font-weight:600}
+.li .t small{color:var(--muted);font-size:12.5px}
+.li .chev{color:var(--faint);font-size:20px}
+.li.danger b{color:var(--red)}
+.section-t{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 4px 8px}
+
+/* import */
+.drop{display:flex;flex-direction:column;align-items:center;gap:6px;border:1.5px dashed var(--line2);border-radius:var(--radius);padding:26px 14px;text-align:center;color:var(--muted);cursor:pointer}
+.drop b{color:var(--text)}
+.imp{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;padding:12px;border:1px solid var(--line);border-radius:14px;margin-top:8px;background:var(--surface2)}
+.imp input[type=checkbox]{width:20px;height:20px;margin-top:2px;accent-color:var(--green)}
+.imp .r{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.imp .input{height:42px;font-size:14px}
+.imp .d{font-size:13px}
+
+/* ---------- sheet (bottom sheet / dialog) ---------- */
+.sheet-wrap{position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55);animation:fadein .2s ease}
+@keyframes fadein{from{opacity:0}}
+.sheet{position:relative;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;background:var(--surface);border:1px solid var(--line);border-bottom:0;border-radius:24px 24px 0 0;padding:10px 18px calc(18px + env(safe-area-inset-bottom));animation:up .24s cubic-bezier(.2,.9,.3,1)}
+@keyframes up{from{transform:translateY(40px);opacity:0}}
+.grab{width:40px;height:5px;border-radius:9px;background:var(--line2);margin:0 auto 12px}
+.sheet-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.sheet-h h2{font-size:19px}
+.x{width:34px;height:34px;border-radius:50%;background:var(--surface2);color:var(--muted);font-size:18px}
+.amount{display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--line);padding:16px 2px 10px;margin-top:6px}
+.amount span{font-size:30px;color:var(--muted);font-weight:600}
+.amount input{flex:1;min-width:0;border:0;outline:0;background:none;font-size:40px;font-weight:700;letter-spacing:-.02em}
+.amount input::placeholder{color:var(--faint)}
+.cats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+.cat{display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px 9px;border-radius:14px;border:1px solid var(--line);background:var(--surface2);font-size:11.5px;line-height:1.2;text-align:center;color:var(--muted)}
+.cat .em{font-size:22px}
+.cat.on{border-color:var(--green);background:var(--green-soft);color:var(--text)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sheet-actions{display:flex;flex-direction:column;gap:10px;margin-top:20px}
+
+/* ---------- toast ---------- */
+.toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 24px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;pointer-events:none;z-index:60;background:#1F2935;border:1px solid var(--line2);color:var(--text);padding:12px 16px;border-radius:14px;font-size:14px;font-weight:500;box-shadow:0 10px 30px rgba(0,0,0,.4);transition:all .22s ease;max-width:calc(100% - 32px)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.demo-bar{background:var(--amber-soft);color:var(--amber);font-size:12.5px;text-align:center;padding:8px;border-radius:12px;margin-bottom:12px}
+
+/* ---------- desktop / laptop ---------- */
+@media (min-width:900px){
+  .app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+  .nav{position:sticky;top:0;height:100vh;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:4px;padding:24px 16px;border-top:0;border-right:1px solid var(--line);background:var(--bg)}
+  .nav .brand{display:flex;align-items:center;gap:10px;padding:0 8px 18px;font-weight:700;font-size:16px}
+  .nav .brand .logo{width:36px;height:36px;font-size:18px;border-radius:11px;margin:0}
+  .nav .add-desk{display:flex;margin:0 0 14px}
+  .nav a{flex-direction:row;gap:12px;width:auto;height:44px;padding:0 12px;border-radius:12px;font-size:14.5px;font-weight:500}
+  .nav a.active{background:var(--surface)}
+  .nav a.desk-only{display:flex}
+  .nav a svg{width:21px;height:21px}
+  .nav .fab{display:none}
+  .nav .nav-foot{display:block;margin-top:auto;font-size:12px;color:var(--faint);padding:0 8px}
+  .app main{max-width:1040px;width:100%;padding:28px 36px 48px}
+  .home-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:18px;align-items:start}
+  .clients-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .clients-grid .card{margin:0}
+  .sheet-wrap{align-items:center}
+  .sheet{border-radius:24px;border-bottom:1px solid var(--line);max-width:480px;padding-bottom:20px}
+  .grab{display:none}
+  .toast{bottom:28px}
+  .cats{grid-template-columns:repeat(5,1fr)}
 }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-<!-- AUTH SCREEN -->
-<div id="authScreen" class="card">
-  <div class="authhead"><h2>Finance Calculator</h2><div style="opacity:.7;font-size:13px">Sign in to sync your data</div></div>
-  <input id="authEmail" type="email" placeholder="Email">
-  <input id="authPass" type="password" placeholder="Password">
-  <div id="authError" class="error"></div>
-  <button onclick="handleAuth('login')">Log In</button>
-  <button class="toplink" onclick="handleAuth('signup')">New here? Create an account</button>
-  <button class="toplink" onclick="sendPasswordReset()">Forgot password?</button>
-</div>
-
-<!-- SET NEW PASSWORD SCREEN (shown after clicking reset link in email) -->
-<div id="resetScreen" class="card hidden">
-  <div class="authhead"><h2>Set New Password</h2><div style="opacity:.7;font-size:13px">Choose a new password for your account</div></div>
-  <input id="newPassword" type="password" placeholder="New password">
-  <div id="resetError" class="error"></div>
-  <button onclick="setNewPassword()">Save New Password</button>
-</div>
-
-<!-- MAIN APP -->
-<div id="appScreen" class="hidden">
-<div class="header">
-<div class="row" style="align-items:center">
-  <div style="font-size:12px;letter-spacing:2px">FINANCE CALCULATOR</div>
-  <div style="font-size:10px;opacity:.6;margin-top:2px">✅ Synced via GitHub</div>
-  <button class="logout" onclick="logout()">Log out</button>
-</div>
-<h1 id="bal">₹0</h1>
-<div class="row"><span>Income</span><span id="inc">₹0</span></div>
-<div class="row"><span>Expense</span><span id="exp">₹0</span></div>
-</div>
-
-<div class="tabbar">
-  <button class="tabbtn active" id="tabbtn-add" onclick="showTab('add')">Add Transaction</button>
-  <button class="tabbtn" id="tabbtn-clients" onclick="showTab('clients')">Clients</button>
-  <button class="tabbtn" id="tabbtn-owes" onclick="showTab('owes')">My Owes</button>
-  <button class="tabbtn" id="tabbtn-overview" onclick="showTab('overview')">Overview</button>
-</div>
-
-<div id="panels">
-
-  <!-- ADD TRANSACTION TAB -->
-  <div class="tabpanel active" id="panel-add">
-    <div class="card">
-      <h3>Import from Statement PDF</h3>
-      <div style="opacity:.7;font-size:13px;margin-bottom:8px">Upload a PhonePe, Google Pay, Paytm, or bank statement PDF. Review the detected entries before importing — nothing saves until you confirm.</div>
-      <input id="pdfUploadInput" type="file" accept="application/pdf" onchange="handlePdfUpload(event)">
-      <div id="pdfPasswordFields" class="hidden">
-        <input id="pdfPassword" type="text" placeholder="PDF password (e.g. mobile number, PAN, DOB)">
-        <button onclick="retryPdfWithPassword()">Unlock & Read PDF</button>
-      </div>
-      <div id="importStatus" style="font-size:13px;opacity:.8"></div>
-      <div id="importPreview"></div>
-      <button id="importBtn" class="hidden" onclick="importSelected()">Import Selected</button>
-    </div>
-
-    <div class="card">
-      <h3>Add Transaction</h3>
-      <input id="amt" type="number" placeholder="Amount ₹">
-      <select id="type" onchange="toggleClientFields()"><option>Expense</option><option>Income</option></select>
-
-      <div id="clientFields" class="hidden">
-        <select id="clientSelect"><option value="">No client (general income)</option></select>
-        <select id="paymentType">
-          <option>Advance</option>
-          <option>Partial</option>
-          <option>Final</option>
-          <option>Full</option>
-          <option>Other</option>
-        </select>
-      </div>
-
-      <select id="cat">
-      <option>Food</option><option>Fuel</option><option>Tea/Coffee</option>
-      <option>Cigarettes</option><option>Shopping</option><option>Travel</option>
-      <option>Medical</option><option>Bills</option><option>EMI/Debt</option>
-      <option>Camera Gear</option><option>Entertainment</option>
-      <option>Freelance Payment</option><option>Other</option>
-      </select>
-      <input id="note" placeholder="Description">
-      <button onclick="addTx()">Add Entry</button>
+<!-- ============ AUTH ============ -->
+<div id="authScreen" class="auth hidden">
+  <div class="auth-card">
+    <div class="logo">₹</div>
+    <h2 id="authTitle">Welcome back</h2>
+    <p id="authSub">Log in to see your money</p>
+    <label class="field"><span>Email</span><input id="authEmail" class="input" type="email" autocomplete="email" inputmode="email"></label>
+    <label class="field"><span>Password</span><input id="authPass" class="input" type="password" autocomplete="current-password"></label>
+    <div id="authError" class="error"></div>
+    <button class="btn btn-primary" id="authBtn" onclick="handleAuth()">Log in</button>
+    <div class="alt">
+      <button class="link" id="authSwitch" onclick="toggleAuthMode()">Create an account</button>
+      <button class="link" onclick="sendPasswordReset()">Forgot password?</button>
     </div>
   </div>
-
-  <!-- CLIENTS TAB -->
-  <div class="tabpanel" id="panel-clients">
-    <div class="card">
-      <h3>Add Client</h3>
-      <input id="clientName" placeholder="Client / Project name">
-      <input id="clientTotal" type="number" placeholder="Total agreed amount ₹">
-      <input id="clientPhone" type="tel" placeholder="WhatsApp number (e.g. 91XXXXXXXXXX)">
-      <button onclick="addClient()">Add Client</button>
-    </div>
-    <div class="card">
-      <h3>Client Balances</h3>
-      <div id="clientList"></div>
-    </div>
-  </div>
-
-  <!-- MY OWES TAB -->
-  <div class="tabpanel" id="panel-owes">
-    <div class="card">
-      <h3>Add a Debt</h3>
-      <input id="oweName" placeholder="Who / what you owe (e.g. Loan, Ramesh)">
-      <input id="oweTotal" type="number" placeholder="Total amount owed ₹">
-      <input id="oweNote" placeholder="Note (optional)">
-      <button onclick="addOwe()">Add Debt</button>
-    </div>
-    <div class="card">
-      <h3>Your Debts</h3>
-      <div id="oweList"></div>
-    </div>
-  </div>
-
-  <!-- OVERVIEW TAB -->
-  <div class="tabpanel" id="panel-overview">
-    <div class="card">
-      <h3>Transactions</h3>
-      <div id="list"></div>
-      <button class="repayBtn" style="width:100%" onclick="exportCSV()">Download Backup (CSV)</button>
-      <button class="reset" onclick="resetAll()">Clear All Data</button>
-    </div>
-  </div>
-
-</div>
 </div>
 
+<div id="resetScreen" class="auth hidden">
+  <div class="auth-card">
+    <div class="logo">₹</div>
+    <h2>Set a new password</h2>
+    <p>Choose a new password for your account</p>
+    <label class="field"><span>New password</span><input id="newPassword" class="input" type="password" autocomplete="new-password"></label>
+    <div id="resetError" class="error"></div>
+    <button class="btn btn-primary" onclick="setNewPassword()">Save new password</button>
+  </div>
 </div>
+
+<!-- ============ APP ============ -->
+<div id="appScreen" class="app hidden">
+  <nav class="nav">
+    <div class="brand"><div class="logo">₹</div>Finance</div>
+    <button class="btn btn-primary btn-sm add-desk" onclick="openTx()">＋ Add transaction</button>
+    <a data-view="home" onclick="go('home')"><svg class="i" viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7V20a1 1 0 0 1-1 1h-5v-6h-5v6h-5a1 1 0 0 1-1-1z"/></svg>Home</a>
+    <a data-view="activity" onclick="go('activity')"><svg class="i" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h8"/><circle cx="4" cy="6" r=".6"/><circle cx="4" cy="12" r=".6"/><circle cx="4" cy="18" r=".6"/></svg>Activity</a>
+    <button class="fab" onclick="openTx()" aria-label="Add transaction">+</button>
+    <a data-view="clients" onclick="go('clients')"><svg class="i" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.7a3.5 3.5 0 0 1 0 6.6M18.6 14.9c1.5.8 2.5 2.4 2.9 5.1"/></svg>Clients</a>
+    <a data-view="loans" onclick="go('loans')"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 15h4"/></svg>Loans</a>
+    <a data-view="more" class="desk-only" onclick="go('more')"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Settings</a>
+    <div class="nav-foot" id="navUser"></div>
+  </nav>
+
+  <main>
+    <div id="demoBar" class="demo-bar hidden">Preview with sample data, nothing here is real or saved</div>
+    <section class="view" id="v-home"></section>
+    <section class="view" id="v-activity"></section>
+    <section class="view" id="v-clients"></section>
+    <section class="view" id="v-loans"></section>
+    <section class="view" id="v-more"></section>
+    <section class="view" id="v-import"></section>
+  </main>
+</div>
+
+<div id="sheetWrap" class="sheet-wrap hidden">
+  <div class="backdrop" onclick="closeSheet()"></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+</div>
+<div id="toast" class="toast"></div>
 
 <script>
 // ======================================================
-// STEP 1: Paste your Supabase project URL and anon key here
+// Supabase project (the publishable key is safe in the browser: Row Level Security is on for every table)
 // ======================================================
 const SUPABASE_URL = "https://ceboyaukuxvfymiedpwj.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_1bVD9SgAT6G6si8Sg7iDYA_pF5Y63-c";
-// ======================================================
+// Open the site with ?demo at the end of the link to preview it with sample data (nothing is saved).
+const DEMO = new URLSearchParams(location.search).has("demo");
+const sb = DEMO ? demoClient() : supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-let tx = [];
-let clients = [];
-let owes = [];
-let currentUser = null;
-
-const money=v=>"₹"+v.toLocaleString("en-IN");
-
-// ---------- TABS ----------
-function showTab(name){
-  ["overview","clients","owes","add"].forEach(t=>{
-    document.getElementById("panel-"+t).classList.toggle("active", t===name);
-    document.getElementById("tabbtn-"+t).classList.toggle("active", t===name);
-  });
+// ---------- categories ----------
+const OUT_CATS = [
+  ["Food","🍽️","#F97316"],["Tea/Coffee","☕","#B45309"],["Cigarettes","🚬","#78716C"],["Fuel","⛽","#EAB308"],
+  ["Travel","🚕","#06B6D4"],["Shopping","🛍️","#EC4899"],["Medical","💊","#EF4444"],["Bills","🧾","#8B5CF6"],
+  ["EMI/Debt","🏦","#6366F1"],["Camera Gear","📷","#14B8A6"],["Entertainment","🎬","#F43F5E"],["Self Transfer","🔁","#64748B"],
+  ["Other","📦","#94A3B8"]];
+const IN_CATS = [
+  ["Freelance Payment","💼","#22C55E"],["Salary","💰","#10B981"],["Refund","↩️","#84CC16"],["Family","👪","#F59E0B"],
+  ["Self Transfer","🔁","#64748B"],["Other","📦","#94A3B8"]];
+const PAY_TYPES = ["Advance","Partial","Final","Full","Other"];
+const NOT_COUNTED = "Self Transfer";   // moving money between your own accounts is not income or spending
+function catMeta(name, type){
+  const lists = type === "Income" ? [IN_CATS, OUT_CATS] : [OUT_CATS, IN_CATS];
+  for(const l of lists){ const c = l.find(x => x[0] === name); if(c) return { name:c[0], icon:c[1], color:c[2] }; }
+  return { name: name || "Other", icon:"📦", color:"#94A3B8" };
 }
 
-// ---------- AUTH ----------
-async function handleAuth(mode){
-  const email = document.getElementById("authEmail").value.trim();
-  const password = document.getElementById("authPass").value;
-  const errEl = document.getElementById("authError");
-  errEl.textContent = "";
-  if(!email || !password){ errEl.textContent = "Enter email and password."; return; }
+// ---------- state ----------
+let tx = [], clients = [], owes = [], currentUser = null;
+let view = "home";
+const now0 = new Date();
+let month = { y: now0.getFullYear(), m: now0.getMonth() };
+let filt = { q:"", type:"All", cat:"" };
+let authMode = "login";
 
-  let result;
-  if(mode === "signup"){
-    result = await sb.auth.signUp({ email, password });
-  } else {
-    result = await sb.auth.signInWithPassword({ email, password });
-  }
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+function esc(s){ return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function money(v){ const n = Number(v)||0; return "₹" + Math.abs(n).toLocaleString("en-IN", { maximumFractionDigits: 2 }); }
+function moneySigned(v){ return (v < 0 ? "−" : "") + money(v); }
+function txDate(t){ return new Date(t.created_at || Date.now()); }
+function inMonth(t, y, m){ const d = txDate(t); return d.getFullYear() === y && d.getMonth() === m; }
+function counted(t){ return t.cat !== NOT_COUNTED; }
+function monthName(y, m, short){ return new Date(y, m, 1).toLocaleDateString("en-IN", { month: short ? "short" : "long", year: "numeric" }); }
+function isCurrentMonth(){ const n = new Date(); return month.y === n.getFullYear() && month.m === n.getMonth(); }
+function ymd(d){ return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
+function dayLabel(d){
+  const t = new Date(); const y = new Date(); y.setDate(t.getDate() - 1);
+  if(ymd(d) === ymd(t)) return "Today";
+  if(ymd(d) === ymd(y)) return "Yesterday";
+  return d.toLocaleDateString("en-IN", { weekday:"short", day:"numeric", month:"short" });
+}
+function timeLabel(d){ return d.toLocaleTimeString("en-IN", { hour:"numeric", minute:"2-digit" }); }
+function initials(name){
+  const w = String(name || "").replace(/[^\p{L}\p{N}\s]/gu, " ").trim().split(/\s+/).filter(Boolean);
+  return esc((w.slice(0, 2).map(x => x[0]).join("") || "?").toUpperCase());
+}
+function clientPaid(c){ return tx.filter(t => t.client_id === c.id && t.type === "Income").reduce((s,t) => s + Number(t.amt), 0); }
+function greeting(){ const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; }
 
-  if(result.error){
-    errEl.textContent = result.error.message;
-    return;
-  }
-  if(mode === "signup" && !result.data.session){
-    errEl.textContent = "Account created. Check your email to confirm, then log in.";
-    return;
-  }
-  await onLoggedIn(result.data.session.user);
+function toast(msg){
+  const el = $("toast"); el.textContent = msg; el.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove("show"), 2600);
+}
+// two-tap delete: the first tap arms the button, the second tap within 3 s runs it
+function armThen(btn, fn){
+  if(btn.dataset.armed){ fn(); return; }
+  btn.dataset.armed = "1"; const old = btn.textContent;
+  btn.textContent = "Tap again to delete"; btn.classList.add("armed");
+  setTimeout(() => { delete btn.dataset.armed; btn.textContent = old; btn.classList.remove("armed"); }, 3000);
 }
 
+// ---------- navigation ----------
+function go(v){
+  view = v;
+  document.querySelectorAll(".view").forEach(s => s.classList.toggle("active", s.id === "v-" + v));
+  const navKey = v === "import" ? "more" : v;
+  document.querySelectorAll(".nav a").forEach(a => a.classList.toggle("active", a.dataset.view === navKey));
+  renderView(v);
+  window.scrollTo(0, 0);
+}
+function renderView(v){
+  ({ home:renderHome, activity:renderActivity, clients:renderClients, loans:renderLoans, more:renderMore, import:renderImport }[v] || renderHome)();
+}
+function renderAll(){ renderView(view); }
+function shiftMonth(n){
+  const d = new Date(month.y, month.m + n, 1);
+  const lim = new Date(); if(d > new Date(lim.getFullYear(), lim.getMonth(), 1)) return;
+  month = { y: d.getFullYear(), m: d.getMonth() }; renderAll();
+}
+function monthSwitch(){
+  return `<div class="month"><button onclick="shiftMonth(-1)" aria-label="Previous month">‹</button><span>${esc(monthName(month.y, month.m, true))}</span><button onclick="shiftMonth(1)" ${isCurrentMonth() ? "disabled" : ""} aria-label="Next month">›</button></div>`;
+}
+
+// ---------- auth ----------
+function toggleAuthMode(){
+  authMode = authMode === "login" ? "signup" : "login";
+  const s = authMode === "signup";
+  $("authTitle").textContent = s ? "Create your account" : "Welcome back";
+  $("authSub").textContent = s ? "Track money in and out in one place" : "Log in to see your money";
+  $("authBtn").textContent = s ? "Create account" : "Log in";
+  $("authSwitch").textContent = s ? "I have an account" : "Create an account";
+  $("authPass").autocomplete = s ? "new-password" : "current-password";
+  $("authError").textContent = "";
+}
+async function handleAuth(){
+  const email = $("authEmail").value.trim(), password = $("authPass").value, err = $("authError");
+  err.className = "error"; err.textContent = "";
+  if(!email || !password){ err.textContent = "Enter your email and password."; return; }
+  $("authBtn").disabled = true;
+  const r = authMode === "signup" ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
+  $("authBtn").disabled = false;
+  if(r.error){ err.textContent = r.error.message; return; }
+  if(authMode === "signup" && !r.data.session){ err.className = "error ok"; err.textContent = "Account created. Check your email to confirm, then log in."; return; }
+  await onLoggedIn(r.data.session.user);
+}
+async function sendPasswordReset(){
+  const email = $("authEmail").value.trim(), err = $("authError");
+  err.className = "error"; err.textContent = "";
+  if(!email){ err.textContent = "Type your email above first, then tap Forgot password."; return; }
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+  if(error){ err.textContent = error.message; return; }
+  err.className = "error ok"; err.textContent = "Reset link sent. Open it from your email to set a new password.";
+}
+async function setNewPassword(){
+  const p = $("newPassword").value, err = $("resetError"); err.textContent = "";
+  if(!p || p.length < 6){ err.textContent = "Use at least 6 characters."; return; }
+  const { error } = await sb.auth.updateUser({ password: p });
+  if(error){ err.textContent = error.message; return; }
+  $("resetScreen").classList.add("hidden");
+  const { data } = await sb.auth.getSession();
+  if(data.session) await onLoggedIn(data.session.user);
+  toast("Password updated");
+}
 async function onLoggedIn(user){
   currentUser = user;
-  document.getElementById("authScreen").classList.add("hidden");
-  document.getElementById("appScreen").classList.remove("hidden");
-  await loadClients();
-  await loadOwes();
-  await loadTx();
+  $("authScreen").classList.add("hidden"); $("resetScreen").classList.add("hidden");
+  $("appScreen").classList.remove("hidden");
+  $("navUser").textContent = user.email || "";
+  $("demoBar").classList.toggle("hidden", !DEMO);
+  // a link ending in #activity, #clients, #debts, #more or #import opens that screen; #add opens the add sheet
+  const h = location.hash.slice(1);
+  go(["activity","clients","loans","more","import"].includes(h) ? h : "home");
+  await Promise.all([loadClients(), loadOwes(), loadTx(), detectSchema()]);
+  renderAll();
+  if(h === "add") openTx();
 }
-
 async function logout(){
   await sb.auth.signOut();
-  currentUser = null;
-  tx = [];
-  clients = [];
-  owes = [];
-  document.getElementById("appScreen").classList.add("hidden");
-  document.getElementById("authScreen").classList.remove("hidden");
-  document.getElementById("authEmail").value = "";
-  document.getElementById("authPass").value = "";
+  currentUser = null; tx = []; clients = []; owes = [];
+  $("appScreen").classList.add("hidden"); $("authScreen").classList.remove("hidden");
+  $("authEmail").value = ""; $("authPass").value = ""; closeSheet();
 }
-
-async function sendPasswordReset(){
-  const email = document.getElementById("authEmail").value.trim();
-  const errEl = document.getElementById("authError");
-  errEl.textContent = "";
-  if(!email){ errEl.textContent = "Enter your email above first, then tap 'Forgot password?'"; return; }
-  const { error } = await sb.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin + window.location.pathname
-  });
-  if(error){ errEl.textContent = error.message; return; }
-  errEl.style.color = "#22c55e";
-  errEl.textContent = "Reset link sent! Check your email and tap the link to set a new password.";
-}
-
-async function setNewPassword(){
-  const newPass = document.getElementById("newPassword").value;
-  const errEl = document.getElementById("resetError");
-  errEl.textContent = "";
-  if(!newPass || newPass.length < 6){ errEl.textContent = "Password must be at least 6 characters."; return; }
-  const { error } = await sb.auth.updateUser({ password: newPass });
-  if(error){ errEl.textContent = error.message; return; }
-  alert("Password updated! You're now logged in.");
-  document.getElementById("resetScreen").classList.add("hidden");
-  const { data } = await sb.auth.getSession();
-  if(data.session){
-    await onLoggedIn(data.session.user);
-  }
-}
-
-// check for existing session on load, and detect password-recovery links
 (async () => {
-  sb.auth.onAuthStateChange((event, session) => {
+  sb.auth.onAuthStateChange((event) => {
     if(event === "PASSWORD_RECOVERY"){
-      document.getElementById("authScreen").classList.add("hidden");
-      document.getElementById("appScreen").classList.add("hidden");
-      document.getElementById("resetScreen").classList.remove("hidden");
+      $("authScreen").classList.add("hidden"); $("appScreen").classList.add("hidden"); $("resetScreen").classList.remove("hidden");
     }
   });
   const { data } = await sb.auth.getSession();
-  if(data.session){
-    await onLoggedIn(data.session.user);
-  }
+  if(data.session) await onLoggedIn(data.session.user);
+  else $("authScreen").classList.remove("hidden");
 })();
 
-// ---------- CLIENT FIELD TOGGLE ----------
-function toggleClientFields(){
-  const isIncome = document.getElementById("type").value === "Income";
-  document.getElementById("clientFields").classList.toggle("hidden", !isIncome);
+// ---------- data ----------
+async function loadTx(){
+  const { data, error } = await sb.from("transactions").select("*").order("created_at", { ascending: true });
+  if(error){ toast("Couldn't load transactions"); console.error(error); return; }
+  tx = data || [];
 }
-
-// ---------- CLIENTS ----------
 async function loadClients(){
-  const { data, error } = await sb
-    .from("clients")
-    .select("*")
-    .order("created_at", { ascending: true });
+  const { data, error } = await sb.from("clients").select("*").order("created_at", { ascending: true });
   if(error){ console.error(error); return; }
   clients = data || [];
-  populateClientDropdown();
-  renderClients();
 }
-
-function populateClientDropdown(){
-  const sel = document.getElementById("clientSelect");
-  sel.innerHTML = '<option value="">No client (general income)</option>';
-  clients.forEach(c=>{
-    sel.innerHTML += `<option value="${c.id}">${c.name}</option>`;
-  });
-}
-
-async function addClient(){
-  const name = document.getElementById("clientName").value.trim();
-  const total = Number(document.getElementById("clientTotal").value) || 0;
-  const phone = document.getElementById("clientPhone").value.trim();
-  if(!name){ return; }
-  const { data, error } = await sb.from("clients").insert({
-    user_id: currentUser.id,
-    name,
-    total_amount: total,
-    phone
-  }).select();
-  if(error){ alert("Couldn't add client: " + error.message); return; }
-  clients.push(data[0]);
-  document.getElementById("clientName").value = "";
-  document.getElementById("clientTotal").value = "";
-  document.getElementById("clientPhone").value = "";
-  populateClientDropdown();
-  renderClients();
-}
-
-async function deleteClient(id){
-  if(!confirm("Delete this client? Transactions linked to them will keep their amounts but lose the client tag.")) return;
-  const { error } = await sb.from("clients").delete().eq("id", id);
-  if(error){ alert("Couldn't delete: " + error.message); return; }
-  clients = clients.filter(c => c.id !== id);
-  tx.forEach(t => { if(t.client_id === id) t.client_id = null; });
-  populateClientDropdown();
-  renderClients();
-  render();
-}
-
-function renderClients(){
-  const el = document.getElementById("clientList");
-  if(clients.length === 0){
-    el.innerHTML = '<div class="empty">No clients yet — add one above.</div>';
-    return;
-  }
-  el.innerHTML = "";
-  clients.forEach(c=>{
-    const paid = tx.filter(t => t.client_id === c.id && t.type === "Income")
-                    .reduce((s,t)=>s+Number(t.amt),0);
-    const pending = Math.max(0, Number(c.total_amount) - paid);
-    const pct = c.total_amount > 0 ? Math.min(100, Math.round((paid / c.total_amount) * 100)) : 0;
-    const reminderBtn = (pending > 0 && c.phone)
-      ? `<button class="repayBtn" onclick="sendReminder('${c.id}')">Send Reminder on WhatsApp</button>`
-      : "";
-    const phoneLine = c.phone ? `<div style="opacity:.6;font-size:12px;margin-top:4px">📱 ${c.phone}</div>` : `<div style="opacity:.6;font-size:12px;margin-top:4px">No WhatsApp number saved</div>`;
-    el.innerHTML += `
-      <div class="clientCard">
-        <div class="row"><b>${c.name}</b>
-          <span>
-            <button class="del" style="margin:0;background:#374151;display:inline-block;width:auto" onclick="editClient('${c.id}')">Edit</button>
-            <button class="del" style="margin:0;display:inline-block;width:auto" onclick="deleteClient('${c.id}')">Delete</button>
-          </span>
-        </div>
-        ${phoneLine}
-        <div class="row"><span>Total agreed</span><span>${money(Number(c.total_amount))}</span></div>
-        <div class="row"><span>Paid so far</span><span class="paidfull">${money(paid)}</span></div>
-        <div class="row"><span>Pending</span><span class="${pending>0?'pending':'paidfull'}">${pending>0?money(pending):'Fully paid'}</span></div>
-        <div class="bar"><div class="barfill" style="width:${pct}%"></div></div>
-        ${reminderBtn}
-      </div>`;
-  });
-}
-
-async function editClient(id){
-  const c = clients.find(x => x.id === id);
-  if(!c) return;
-
-  const newName = prompt("Client / Project name:", c.name);
-  if(newName === null) return;
-
-  const newTotalStr = prompt("Total agreed amount ₹:", c.total_amount);
-  if(newTotalStr === null) return;
-
-  const newPhone = prompt("WhatsApp number (with country code, e.g. 91XXXXXXXXXX):", c.phone || "");
-  if(newPhone === null) return;
-
-  const updates = {
-    name: newName.trim() || c.name,
-    total_amount: Number(newTotalStr) || 0,
-    phone: newPhone.trim()
-  };
-
-  const { data, error } = await sb.from("clients").update(updates).eq("id", id).select();
-  if(error){ alert("Couldn't update: " + error.message); return; }
-  Object.assign(c, data[0]);
-  populateClientDropdown();
-  renderClients();
-}
-
-function sendReminder(clientId){
-  const c = clients.find(x => x.id === clientId);
-  if(!c) return;
-  const paid = tx.filter(t => t.client_id === c.id && t.type === "Income")
-                  .reduce((s,t)=>s+Number(t.amt),0);
-  const pending = Math.max(0, Number(c.total_amount) - paid);
-  if(pending <= 0){ alert("This client has no pending balance."); return; }
-  if(!c.phone){ alert("Add a WhatsApp number for this client first."); return; }
-  const phone = c.phone.replace(/[^0-9]/g, "");
-  const message = `Hi ${c.name}, this is a reminder that ${money(pending)} is still pending. Please let me know if you have any questions. Thanks!`;
-  const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-  window.open(url, "_blank");
-}
-
-// ---------- MY OWES (DEBTS) ----------
 async function loadOwes(){
-  const { data, error } = await sb
-    .from("debts")
-    .select("*")
-    .order("created_at", { ascending: true });
+  const { data, error } = await sb.from("debts").select("*").order("created_at", { ascending: true });
   if(error){ console.error(error); return; }
   owes = data || [];
-  renderOwes();
 }
-
-async function addOwe(){
-  const name = document.getElementById("oweName").value.trim();
-  const total = Number(document.getElementById("oweTotal").value) || 0;
-  const note = document.getElementById("oweNote").value.trim();
-  if(!name || !total){ return; }
-  const { data, error } = await sb.from("debts").insert({
-    user_id: currentUser.id,
-    name,
-    total_amount: total,
-    paid_amount: 0,
-    note
-  }).select();
-  if(error){ alert("Couldn't add debt: " + error.message); return; }
-  owes.push(data[0]);
-  document.getElementById("oweName").value = "";
-  document.getElementById("oweTotal").value = "";
-  document.getElementById("oweNote").value = "";
-  renderOwes();
+// The EMI details (type, monthly EMI, due day) and the link from a payment to its loan need two small
+// database additions (see supabase/loans.sql). Until they are added, loans work with name, total and paid only.
+let hasLoanCols = false, hasDebtLink = false;
+async function detectSchema(){
+  const [a, b] = await Promise.all([
+    sb.from("debts").select("kind,emi_amount,due_day").limit(1),
+    sb.from("transactions").select("debt_id").limit(1)]);
+  hasLoanCols = !a.error; hasDebtLink = !b.error;
 }
-
-async function repayOwe(id){
-  const owe = owes.find(o => o.id === id);
-  if(!owe) return;
-  const remaining = Number(owe.total_amount) - Number(owe.paid_amount);
-  const input = prompt(`How much are you paying off "${owe.name}"? (Remaining: ${money(remaining)})`);
-  if(input === null) return;
-  const amt = Number(input);
-  if(!amt || amt <= 0) return;
-  const newPaid = Math.min(Number(owe.total_amount), Number(owe.paid_amount) + amt);
-  const { data, error } = await sb.from("debts").update({ paid_amount: newPaid }).eq("id", id).select();
-  if(error){ alert("Couldn't update: " + error.message); return; }
-  owe.paid_amount = data[0].paid_amount;
-  renderOwes();
-}
-
-async function deleteOwe(id){
-  if(!confirm("Delete this debt record?")) return;
-  const { error } = await sb.from("debts").delete().eq("id", id);
-  if(error){ alert("Couldn't delete: " + error.message); return; }
-  owes = owes.filter(o => o.id !== id);
-  renderOwes();
-}
-
-function renderOwes(){
-  const el = document.getElementById("oweList");
-  if(owes.length === 0){
-    el.innerHTML = '<div class="empty">No debts added — you are all clear, or add one above.</div>';
-    return;
+// inserts/updates that set the transaction date (created_at); retries without it if the database refuses that column
+async function writeTx(op, row, id){
+  const run = r => op === "insert" ? sb.from("transactions").insert(r).select() : sb.from("transactions").update(r).eq("id", id).select();
+  let res = await run(row);
+  if(res.error && /created_at/i.test(res.error.message || "")){
+    const r2 = Array.isArray(row) ? row.map(({ created_at, ...x }) => x) : (({ created_at, ...x }) => x)(row);
+    res = await run(r2);
   }
-  el.innerHTML = "";
-  owes.forEach(o=>{
-    const remaining = Math.max(0, Number(o.total_amount) - Number(o.paid_amount));
-    const pct = o.total_amount > 0 ? Math.min(100, Math.round((Number(o.paid_amount) / Number(o.total_amount)) * 100)) : 0;
-    el.innerHTML += `
-      <div class="owesCard">
-        <div class="row"><b>${o.name}</b><button class="del" style="margin:0" onclick="deleteOwe('${o.id}')">Delete</button></div>
-        ${o.note ? `<div style="opacity:.7;font-size:13px">${o.note}</div>` : ""}
-        <div class="row"><span>Total owed</span><span>${money(Number(o.total_amount))}</span></div>
-        <div class="row"><span>Paid off</span><span class="paidfull">${money(Number(o.paid_amount))}</span></div>
-        <div class="row"><span>Remaining</span><span class="${remaining>0?'pending':'paidfull'}">${remaining>0?money(remaining):'Cleared'}</span></div>
-        <div class="bar"><div class="owebarfill" style="width:${pct}%"></div></div>
-        ${remaining>0 ? `<button class="repayBtn" onclick="repayOwe('${o.id}')">Log a Repayment</button>` : ""}
-      </div>`;
+  return res;
+}
+
+// ======================================================
+// HOME
+// ======================================================
+function monthTotals(y, m){
+  let inc = 0, out = 0;
+  tx.forEach(t => { if(!inMonth(t, y, m) || !counted(t)) return; if(t.type === "Income") inc += Number(t.amt); else out += Number(t.amt); });
+  return { inc, out };
+}
+function renderHome(){
+  const { inc, out } = monthTotals(month.y, month.m);
+  const bal = inc - out;
+  const todayKey = ymd(new Date());
+  const spentToday = tx.filter(t => t.type !== "Income" && counted(t) && ymd(txDate(t)) === todayKey).reduce((s,t) => s + Number(t.amt), 0);
+  const recent = tx.slice().sort((a,b) => txDate(b) - txDate(a)).slice(0, 6);
+  const pendingTotal = clients.reduce((s,c) => s + Math.max(0, Number(c.total_amount) - clientPaid(c)), 0);
+  const pendingCount = clients.filter(c => Number(c.total_amount) - clientPaid(c) > 0).length;
+  const oweTotal = owes.reduce((s,o) => s + Math.max(0, Number(o.total_amount) - Number(o.paid_amount)), 0);
+
+  $("v-home").innerHTML = `
+    <header class="top">
+      <div><div class="hello">${greeting()}</div><h1>Overview</h1></div>
+      <div style="display:flex;gap:8px;align-items:center">${monthSwitch()}<button class="gear" onclick="go('more')" aria-label="Settings">⚙️</button></div>
+    </header>
+    <div class="home-grid">
+      <div>
+        <div class="hero">
+          <div class="label">Balance this month</div>
+          <div class="big ${bal < 0 ? "neg" : ""}">${moneySigned(bal)}</div>
+          <div class="hero-stats">
+            <div class="stat"><div class="k"><span class="dot in"></span>Money in</div><b>${money(inc)}</b></div>
+            <div class="stat"><div class="k"><span class="dot out"></span>Money out</div><b>${money(out)}</b></div>
+          </div>
+          ${isCurrentMonth() ? `<div class="today"><span>Spent today</span><b>${money(spentToday)}</b></div>` : ""}
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Where your money went</h3><span class="muted" style="font-size:13px">${esc(monthName(month.y, month.m, true))}</span></div>
+          ${donutHtml()}
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Last 6 months</h3><div class="keys"><span><i class="dot in"></i>In</span><span><i class="dot out"></i>Out</span></div></div>
+          ${barsHtml()}
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <div class="card-h"><h3>Recent</h3>${tx.length ? `<button class="link" onclick="go('activity')">See all</button>` : ""}</div>
+          ${recent.length ? recent.map(t => txRow(t, "day")).join("") : emptyHtml("🧾", "No transactions yet. Tap + to add your first one.")}
+        </div>
+        <button class="card" style="display:block;width:100%;text-align:left" onclick="go('clients')">
+          <div class="card-h" style="margin-bottom:6px"><h3>To receive from clients</h3><span class="chev muted">›</span></div>
+          <div style="font-size:24px;font-weight:700" class="${pendingTotal > 0 ? "pending" : ""}">${money(pendingTotal)}</div>
+          <div class="muted" style="font-size:13px">${pendingCount ? pendingCount + " client" + (pendingCount > 1 ? "s" : "") + " with money pending" : clients.length ? "Everyone has paid in full" : "Add clients to track what they owe you"}</div>
+        </button>
+        <button class="card" style="display:block;width:100%;text-align:left" onclick="go('loans')">
+          <div class="card-h" style="margin-bottom:6px"><h3>Loans & EMIs left to pay</h3><span class="chev muted">›</span></div>
+          <div style="font-size:24px;font-weight:700">${money(oweTotal)}</div>
+          <div class="muted" style="font-size:13px">${nextDueLine()}</div>
+        </button>
+      </div>
+    </div>`;
+}
+function donutHtml(){
+  const by = {};
+  tx.forEach(t => { if(t.type === "Income" || !counted(t) || !inMonth(t, month.y, month.m)) return; by[t.cat] = (by[t.cat] || 0) + Number(t.amt); });
+  let rows = Object.entries(by).sort((a,b) => b[1] - a[1]);
+  const total = rows.reduce((s,r) => s + r[1], 0);
+  if(!total) return emptyHtml("🍩", "No spending in " + monthName(month.y, month.m) + " yet.");
+  if(rows.length > 6){ const rest = rows.slice(5).reduce((s,r) => s + r[1], 0); rows = rows.slice(0,5).concat([["More", rest]]); }
+  const R = 52, C = 2 * Math.PI * R; let off = 0;
+  const segs = rows.map(([name, v]) => {
+    const col = name === "More" ? "#475569" : catMeta(name).color;
+    const len = v / total * C, gap = rows.length > 1 ? 2 : 0;
+    const s = `<circle r="${R}" cx="64" cy="64" fill="none" stroke="${col}" stroke-width="16" stroke-dasharray="${Math.max(0, len - gap)} ${C}" stroke-dashoffset="${-off}" transform="rotate(-90 64 64)"/>`;
+    off += len; return s;
+  }).join("");
+  const legend = rows.map(([name, v]) => {
+    const col = name === "More" ? "#475569" : catMeta(name).color;
+    return `<div class="lg"><i class="sw" style="background:${col}"></i><span class="nm">${esc(name)}</span><b>${money(v)}</b><span class="pc">${Math.round(v / total * 100)}%</span></div>`;
+  }).join("");
+  return `<div class="donut-wrap">
+    <svg class="donut" viewBox="0 0 128 128"><circle r="${R}" cx="64" cy="64" fill="none" stroke="#18202B" stroke-width="16"/>${segs}
+      <text x="64" y="60" text-anchor="middle" fill="#8C98A8" font-size="10">Spent</text>
+      <text x="64" y="76" text-anchor="middle" fill="#E9EEF4" font-size="14" font-weight="700">${esc(money(total))}</text></svg>
+    <div class="legend">${legend}</div></div>`;
+}
+function barsHtml(){
+  const months = [];
+  for(let i = 5; i >= 0; i--){ const d = new Date(month.y, month.m - i, 1); months.push({ y:d.getFullYear(), m:d.getMonth(), ...monthTotals(d.getFullYear(), d.getMonth()) }); }
+  const max = Math.max(1, ...months.map(x => Math.max(x.inc, x.out)));
+  const W = 320, H = 150, base = 120, top = 14, gw = W / 6, bw = 14;
+  const bars = months.map((x, i) => {
+    const cx = gw * i + gw / 2, hi = (base - top) * x.inc / max, ho = (base - top) * x.out / max;
+    const sel = i === 5;
+    return `<rect x="${cx - bw - 2}" y="${base - hi}" width="${bw}" height="${Math.max(hi, 1.5)}" rx="4" fill="#22C55E" opacity="${sel ? 1 : .55}"/>
+      <rect x="${cx + 2}" y="${base - ho}" width="${bw}" height="${Math.max(ho, 1.5)}" rx="4" fill="#F05252" opacity="${sel ? 1 : .55}"/>
+      <text x="${cx}" y="${base + 20}" text-anchor="middle" font-size="11" fill="${sel ? "#E9EEF4" : "#8C98A8"}" font-weight="${sel ? 700 : 400}">${new Date(x.y, x.m, 1).toLocaleDateString("en-IN", { month:"short" })}</text>`;
+  }).join("");
+  return `<svg class="bars" viewBox="0 0 ${W} ${H}"><line x1="0" x2="${W}" y1="${base}" y2="${base}" stroke="#222C38"/>${bars}</svg>`;
+}
+function emptyHtml(e, text){ return `<div class="empty"><div class="e">${e}</div>${esc(text)}</div>`; }
+// mode: "time" inside day groups (Activity), "day" for Recent (Today / Yesterday / 21 Nov), "date" for loan history
+function txRow(t, mode){
+  const c = catMeta(t.cat, t.type), d = txDate(t), cl = clients.find(x => x.id === t.client_id);
+  const when = mode === "date" ? d.toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })
+             : mode === "day" ? dayLabel(d) + ", " + timeLabel(d) : timeLabel(d);
+  const sub = [t.note && t.note !== "No description" ? t.note : "", cl ? cl.name : "", when].filter(Boolean).join(" · ");
+  const inc = t.type === "Income";
+  return `<button class="tx" onclick="openTx('${esc(t.id)}')">
+    <span class="ico" style="background:${c.color}22">${c.icon}</span>
+    <span class="tx-main"><span class="tx-title">${esc(t.cat)}</span><span class="tx-sub">${esc(sub)}</span></span>
+    <span class="tx-amt ${inc ? "in" : "out"}">${inc ? "+" : "−"}${money(t.amt)}</span></button>`;
+}
+
+// ======================================================
+// ACTIVITY
+// ======================================================
+function renderActivity(){
+  const cats = [...new Set(tx.filter(t => inMonth(t, month.y, month.m)).map(t => t.cat))];
+  $("v-activity").innerHTML = `
+    <header class="top"><div><div class="hello">All transactions</div><h1>Activity</h1></div>${monthSwitch()}</header>
+    <div class="search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input class="input" id="q" placeholder="Search notes, clients, categories" value="${esc(filt.q)}" oninput="filt.q=this.value;renderActivityList()"></div>
+    <div class="seg">${["All","Expense","Income"].map(k => `<button class="${filt.type === k ? "on " + (k === "Expense" ? "out" : k === "Income" ? "in" : "") : ""}" onclick="filt.type='${k}';renderActivity()">${k === "All" ? "All" : k === "Expense" ? "Money out" : "Money in"}</button>`).join("")}</div>
+    <div class="chips"><button class="chip ${filt.cat ? "" : "on"}" onclick="filt.cat='';renderActivity()">All categories</button>${cats.map(c => `<button class="chip ${filt.cat === c ? "on" : ""}" onclick="filt.cat=${esc(JSON.stringify(c))};renderActivity()">${catMeta(c).icon} ${esc(c)}</button>`).join("")}</div>
+    <div id="actList"></div>`;
+  renderActivityList();
+}
+function renderActivityList(){
+  const q = filt.q.trim().toLowerCase();
+  const rows = tx.filter(t => inMonth(t, month.y, month.m))
+    .filter(t => filt.type === "All" || t.type === filt.type)
+    .filter(t => !filt.cat || t.cat === filt.cat)
+    .filter(t => { if(!q) return true; const cl = clients.find(x => x.id === t.client_id); return [t.note, t.cat, cl && cl.name, String(t.amt)].some(s => String(s || "").toLowerCase().includes(q)); })
+    .sort((a,b) => txDate(b) - txDate(a));
+  const el = $("actList");
+  if(!rows.length){ el.innerHTML = emptyHtml("🔍", tx.length ? "Nothing matches in " + monthName(month.y, month.m) + "." : "No transactions yet. Tap + to add one."); return; }
+  const groups = {};
+  rows.forEach(t => { const k = ymd(txDate(t)); (groups[k] = groups[k] || []).push(t); });
+  el.innerHTML = Object.entries(groups).map(([k, list]) => {
+    const net = list.reduce((s,t) => s + (counted(t) ? (t.type === "Income" ? 1 : -1) * Number(t.amt) : 0), 0);
+    return `<div class="day"><span>${esc(dayLabel(txDate(list[0])))}</span><span>${net >= 0 ? "+" : "−"}${money(net)}</span></div>` + list.map(t => txRow(t, "time")).join("");
+  }).join("");
+}
+
+// ======================================================
+// ADD / EDIT TRANSACTION SHEET
+// ======================================================
+let txForm = null;
+function openTx(id, preset){
+  const t = id ? tx.find(x => x.id === id) : null;
+  preset = preset || {};
+  txForm = { id: t ? t.id : null, type: t ? t.type : (preset.type || "Expense"), cat: t ? t.cat : (preset.cat || ""),
+             client: t ? (t.client_id || "") : (preset.client || ""), pay: t ? (t.payment_type || "Full") : "Full",
+             origDate: t ? ymd(txDate(t)) : null };
+  const dateVal = t ? ymd(txDate(t)) : ymd(new Date());
+  openSheet(`
+    <div class="sheet-h"><h2>${t ? "Edit transaction" : "Add transaction"}</h2><button class="x" onclick="closeSheet()" aria-label="Close">✕</button></div>
+    <div class="seg" id="txSeg"></div>
+    <div class="amount"><span>₹</span><input id="txAmt" type="text" inputmode="decimal" placeholder="0" value="${t ? esc(t.amt) : ""}" autocomplete="off"></div>
+    <div class="field"><span>Category</span><div class="cats" id="txCats"></div></div>
+    <div id="txIncome"></div>
+    <label class="field"><span>Note (optional)</span><input class="input" id="txNote" placeholder="What was it for?" value="${t && t.note !== "No description" ? esc(t.note) : ""}"></label>
+    <label class="field"><span>Date</span><input class="input" id="txDate" type="date" value="${dateVal}" max="${ymd(new Date())}"></label>
+    <div class="sheet-actions">
+      <button class="btn btn-primary" id="txSave" onclick="saveTx()">${t ? "Save changes" : "Add"}</button>
+      ${t ? `<button class="btn btn-danger" onclick="armThen(this, () => deleteTx('${esc(t.id)}'))">Delete transaction</button>` : ""}
+    </div>`);
+  paintTxForm();
+  if(!t) setTimeout(() => $("txAmt") && $("txAmt").focus(), 250);
+}
+function paintTxForm(){
+  const f = txForm;
+  $("txSeg").innerHTML = `<button class="${f.type === "Expense" ? "on out" : ""}" onclick="setTxType('Expense')">Money out</button><button class="${f.type === "Income" ? "on in" : ""}" onclick="setTxType('Income')">Money in</button>`;
+  const list = f.type === "Income" ? IN_CATS : OUT_CATS;
+  $("txCats").innerHTML = list.map(([n, ic]) => `<button class="cat ${f.cat === n ? "on" : ""}" onclick="txForm.cat=${esc(JSON.stringify(n))};paintTxForm()"><span class="em">${ic}</span>${esc(n)}</button>`).join("");
+  $("txIncome").innerHTML = f.type !== "Income" ? "" : `
+    <div class="row2">
+      <label class="field"><span>Client</span><select class="input" id="txClient" onchange="txForm.client=this.value">
+        <option value="">No client</option>${clients.map(c => `<option value="${esc(c.id)}" ${f.client === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
+      <label class="field"><span>Payment</span><select class="input" id="txPay" onchange="txForm.pay=this.value">${PAY_TYPES.map(p => `<option ${f.pay === p ? "selected" : ""}>${p}</option>`).join("")}</select></label>
+    </div>`;
+}
+function setTxType(type){
+  txForm.type = type;
+  const list = type === "Income" ? IN_CATS : OUT_CATS;
+  if(!list.some(c => c[0] === txForm.cat)) txForm.cat = "";
+  paintTxForm();
+}
+async function saveTx(){
+  const f = txForm;
+  const amt = parseFloat(String($("txAmt").value).replace(/[^\d.]/g, ""));
+  if(!amt || amt <= 0){ toast("Enter an amount"); $("txAmt").focus(); return; }
+  if(!f.cat){ toast("Pick a category"); return; }
+  const dv = $("txDate").value || ymd(new Date());
+  const isInc = f.type === "Income";
+  const row = { type: f.type, cat: f.cat, note: $("txNote").value.trim() || "No description", amt,
+                client_id: isInc ? (f.client || null) : null, payment_type: isInc ? f.pay : null };
+  if(!f.id || dv !== f.origDate){
+    const [y, m, d] = dv.split("-").map(Number);
+    row.created_at = (dv === ymd(new Date()) ? new Date() : new Date(y, m - 1, d, 12, 0, 0)).toISOString();
+  }
+  $("txSave").disabled = true;
+  const old = f.id ? tx.find(x => x.id === f.id) : null, oldAmt = old ? Number(old.amt) : 0;
+  let res;
+  if(f.id) res = await writeTx("update", row, f.id);
+  else res = await writeTx("insert", { ...row, user_id: currentUser.id });
+  $("txSave").disabled = false;
+  if(res.error){ toast("Couldn't save: " + res.error.message); return; }
+  if(f.id){ const i = tx.findIndex(x => x.id === f.id); if(i >= 0) tx[i] = res.data[0]; }
+  else tx.push(res.data[0]);
+  if(old && old.debt_id && amt !== oldAmt) await adjustLoanPaid(old.debt_id, amt - oldAmt);
+  closeSheet(); renderAll();
+  toast(f.id ? "Saved" : (isInc ? "Money in added · " : "Money out added · ") + money(amt));
+}
+async function deleteTx(id){
+  const t = tx.find(x => x.id === id);
+  const { error } = await sb.from("transactions").delete().eq("id", id);
+  if(error){ toast("Couldn't delete: " + error.message); return; }
+  tx = tx.filter(x => x.id !== id);
+  if(t && t.debt_id) await adjustLoanPaid(t.debt_id, -Number(t.amt));
+  closeSheet(); renderAll(); toast(t && t.debt_id ? "Payment deleted · loan balance updated" : "Transaction deleted");
+}
+
+// ======================================================
+// CLIENTS
+// ======================================================
+function renderClients(){
+  const agreed = clients.reduce((s,c) => s + Number(c.total_amount), 0);
+  const paid = clients.reduce((s,c) => s + Math.min(clientPaid(c), Number(c.total_amount) || clientPaid(c)), 0);
+  const pending = clients.reduce((s,c) => s + Math.max(0, Number(c.total_amount) - clientPaid(c)), 0);
+  $("v-clients").innerHTML = `
+    <header class="top"><div><div class="hello">Projects & payments</div><h1>Clients</h1></div><button class="btn btn-primary btn-sm" onclick="openClient()">＋ Client</button></header>
+    <div class="sum3">
+      <div class="stat"><div class="k">Agreed</div><b>${money(agreed)}</b></div>
+      <div class="stat"><div class="k">Received</div><b class="paid">${money(paid)}</b></div>
+      <div class="stat"><div class="k">Pending</div><b class="${pending > 0 ? "pending" : ""}">${money(pending)}</b></div>
+    </div>
+    ${clients.length ? `<div class="clients-grid">${clients.slice().sort((a,b) => (Number(b.total_amount) - clientPaid(b)) - (Number(a.total_amount) - clientPaid(a))).map(clientCard).join("")}</div>`
+      : `<div class="card">${emptyHtml("🤝", "No clients yet. Add a client to track what they owe you.")}<button class="btn btn-soft" onclick="openClient()">Add your first client</button></div>`}`;
+}
+function clientCard(c){
+  const paid = clientPaid(c), total = Number(c.total_amount), pending = Math.max(0, total - paid);
+  const pct = total > 0 ? Math.min(100, Math.round(paid / total * 100)) : 0;
+  return `<div class="card">
+    <div class="person"><div class="avatar">${initials(c.name)}</div>
+      <div style="flex:1;min-width:0"><div class="pname">${esc(c.name)}</div><div class="psub">${c.phone ? "📱 " + esc(c.phone) : "No WhatsApp number"}</div></div>
+      <span class="badge ${pending > 0 ? "amber" : ""}">${pending > 0 ? "Pending" : "Paid"}</span></div>
+    <div class="prog"><i style="width:${pct}%"></i></div>
+    <div class="kv"><span class="muted">Received ${money(paid)} of ${money(total)}</span><span class="${pending > 0 ? "pending" : "paid"}">${pending > 0 ? money(pending) + " left" : "Fully paid"}</span></div>
+    <div class="actions">
+      <button class="btn btn-soft btn-sm" onclick="openTx(null,{type:'Income',client:'${esc(c.id)}',cat:'Freelance Payment'})">＋ Payment</button>
+      ${pending > 0 && c.phone ? `<button class="btn btn-soft btn-sm" onclick="sendReminder('${esc(c.id)}')">💬 Remind</button>` : ""}
+      <button class="btn btn-soft btn-sm" onclick="openClient('${esc(c.id)}')">Edit</button>
+    </div></div>`;
+}
+function openClient(id){
+  const c = id ? clients.find(x => x.id === id) : null;
+  openSheet(`
+    <div class="sheet-h"><h2>${c ? "Edit client" : "New client"}</h2><button class="x" onclick="closeSheet()" aria-label="Close">✕</button></div>
+    <label class="field"><span>Client or project name</span><input class="input" id="cName" value="${c ? esc(c.name) : ""}" placeholder="e.g. Wedding shoot – Ramesh"></label>
+    <label class="field"><span>Total agreed amount (₹)</span><input class="input" id="cTotal" inputmode="decimal" value="${c ? esc(c.total_amount) : ""}" placeholder="0"></label>
+    <label class="field"><span>WhatsApp number (with 91)</span><input class="input" id="cPhone" type="tel" inputmode="tel" value="${c ? esc(c.phone || "") : ""}" placeholder="91XXXXXXXXXX"></label>
+    <div class="sheet-actions">
+      <button class="btn btn-primary" onclick="saveClient(${c ? `'${esc(c.id)}'` : "null"})">${c ? "Save changes" : "Add client"}</button>
+      ${c ? `<button class="btn btn-danger" onclick="armThen(this, () => deleteClient('${esc(c.id)}'))">Delete client</button>` : ""}
+    </div>`);
+  if(!c) setTimeout(() => $("cName") && $("cName").focus(), 250);
+}
+async function saveClient(id){
+  const name = $("cName").value.trim();
+  if(!name){ toast("Enter a name"); return; }
+  const row = { name, total_amount: parseFloat($("cTotal").value.replace(/[^\d.]/g, "")) || 0, phone: $("cPhone").value.trim() };
+  const res = id ? await sb.from("clients").update(row).eq("id", id).select()
+                 : await sb.from("clients").insert({ ...row, user_id: currentUser.id }).select();
+  if(res.error){ toast("Couldn't save: " + res.error.message); return; }
+  if(id){ const i = clients.findIndex(x => x.id === id); clients[i] = res.data[0]; } else clients.push(res.data[0]);
+  closeSheet(); renderAll(); toast(id ? "Client saved" : "Client added");
+}
+async function deleteClient(id){
+  const { error } = await sb.from("clients").delete().eq("id", id);
+  if(error){ toast("Couldn't delete: " + error.message); return; }
+  clients = clients.filter(c => c.id !== id);
+  tx.forEach(t => { if(t.client_id === id) t.client_id = null; });
+  closeSheet(); renderAll(); toast("Client deleted");
+}
+function sendReminder(id){
+  const c = clients.find(x => x.id === id); if(!c) return;
+  const pending = Math.max(0, Number(c.total_amount) - clientPaid(c));
+  const phone = String(c.phone || "").replace(/[^0-9]/g, "");
+  if(!phone){ toast("Add a WhatsApp number first"); return; }
+  const msg = `Hi ${c.name}, this is a friendly reminder that ${money(pending)} is still pending. Please let me know if you have any questions. Thanks!`;
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
+}
+
+// ======================================================
+// LOANS & EMIs
+// ======================================================
+const LOAN_KINDS = [["EMI","🗓️"],["Loan","🏦"],["Borrowed","🤝"],["Credit card","💳"],["Other","📄"]];
+const num = v => parseFloat(String(v ?? "").replace(/[^\d.]/g, "")) || 0;
+function loanKind(o){ const k = (hasLoanCols && o.kind) || "Loan"; return LOAN_KINDS.find(x => x[0] === k) || LOAN_KINDS[1]; }
+function loanLeft(o){ return Math.max(0, Number(o.total_amount) - Number(o.paid_amount)); }
+// payments made towards a loan: linked by debt_id, or (before the database update) by the "EMI · name" note
+function loanPayments(o){
+  return tx.filter(t => hasDebtLink ? t.debt_id === o.id
+                                    : (t.cat === "EMI/Debt" && / · /.test(t.note || "") && String(t.note).endsWith(" · " + o.name)))
+           .sort((a,b) => txDate(b) - txDate(a));
+}
+function paidThisMonth(o){ const n = new Date(); return loanPayments(o).filter(t => inMonth(t, n.getFullYear(), n.getMonth())).reduce((s,t) => s + Number(t.amt), 0); }
+// next due date from the due day; once this month's EMI is paid, the next one is next month
+function nextDue(o){
+  const day = hasLoanCols ? Number(o.due_day) : 0;
+  if(!day || loanLeft(o) <= 0) return null;
+  const n = new Date(), y = n.getFullYear(), m = n.getMonth();
+  const at = (yy, mm) => new Date(yy, mm, Math.min(day, new Date(yy, mm + 1, 0).getDate()));
+  const paidNow = paidThisMonth(o) > 0;
+  const addedAfterDue = o.created_at && new Date(o.created_at) > at(y, m);   // a loan added after this month's due date starts next month
+  const due = paidNow || addedAfterDue ? at(y, m + 1) : at(y, m);
+  const days = Math.round((due - new Date(y, m, n.getDate())) / 864e5);
+  return { due, days, paidNow, overdue: !paidNow && days < 0 };
+}
+function dueText(nd){
+  if(!nd) return "";
+  if(nd.overdue) return `Overdue by ${-nd.days} day${nd.days === -1 ? "" : "s"}`;
+  if(nd.days === 0) return "Due today";
+  if(nd.days === 1) return "Due tomorrow";
+  return "Due " + nd.due.toLocaleDateString("en-IN", { day:"numeric", month:"short" }) + (nd.days <= 7 ? ` · in ${nd.days} days` : "");
+}
+function nextDueLine(){
+  const open = owes.filter(o => loanLeft(o) > 0);
+  if(!open.length) return owes.length ? "All loans cleared 🎉" : "Add your loans and EMIs to track what's left";
+  const soon = open.map(o => ({ o, nd: nextDue(o) })).filter(x => x.nd && !x.nd.paidNow).sort((a,b) => a.nd.due - b.nd.due)[0];
+  if(soon) return `Next: ${esc(soon.o.name)}${soon.o.emi_amount ? " " + money(soon.o.emi_amount) : ""} · ${esc(dueText(soon.nd))}`;
+  return open.length + " open loan" + (open.length > 1 ? "s" : "");
+}
+function dueKey(o){ const nd = nextDue(o); return nd ? nd.due.getTime() : Infinity; }
+
+function renderLoans(){
+  const open = owes.filter(o => loanLeft(o) > 0).sort((a,b) => dueKey(a) - dueKey(b));
+  const closed = owes.filter(o => loanLeft(o) <= 0);
+  const left = owes.reduce((s,o) => s + loanLeft(o), 0);
+  const emiMonth = open.reduce((s,o) => s + (hasLoanCols ? Number(o.emi_amount) || 0 : 0), 0);
+  const paidMonth = owes.reduce((s,o) => s + paidThisMonth(o), 0);
+  $("v-loans").innerHTML = `
+    <header class="top"><div><div class="hello">What you still have to pay</div><h1>Loans & EMIs</h1></div><button class="btn btn-primary btn-sm" onclick="openLoan()">＋ Add</button></header>
+    <div class="hero" style="background:radial-gradient(120% 140% at 0% 0%,rgba(245,165,36,.24),transparent 55%),var(--surface)">
+      <div class="label">Left to pay</div>
+      <div class="big">${money(left)}</div>
+      <div class="hero-stats">
+        <div class="stat"><div class="k">EMIs each month</div><b>${hasLoanCols ? money(emiMonth) : "–"}</b></div>
+        <div class="stat"><div class="k">Paid this month</div><b class="paid">${money(paidMonth)}</b></div>
+      </div>
+    </div>
+    ${!hasLoanCols ? `<div class="demo-bar">Monthly EMI and due dates switch on after a one-time database update.</div>` : ""}
+    ${open.length ? `<div class="clients-grid">${open.map(loanCard).join("")}</div>`
+      : `<div class="card">${emptyHtml("🎉", owes.length ? "Everything is paid off." : "No loans or EMIs yet. Add one to see what's left to pay.")}<button class="btn btn-soft" onclick="openLoan()">Add a loan or EMI</button></div>`}
+    ${closed.length ? `<div class="section-t">Paid off</div><div class="list">${closed.map(o => `<button class="li" onclick="openLoanDetail('${esc(o.id)}')"><span class="ico">${loanKind(o)[1]}</span><span class="t"><b>${esc(o.name)}</b><small>${money(o.total_amount)} cleared</small></span><span class="chev">›</span></button>`).join("")}</div>` : ""}`;
+}
+function loanCard(o){
+  const total = Number(o.total_amount), paid = Number(o.paid_amount), left = loanLeft(o);
+  const pct = total > 0 ? Math.min(100, Math.round(paid / total * 100)) : 0;
+  const emi = hasLoanCols ? Number(o.emi_amount) || 0 : 0;
+  const nd = nextDue(o), k = loanKind(o);
+  const emisLeft = emi ? Math.ceil(left / emi) : 0;
+  const meta = [emi ? money(emi) + "/month" : "", emisLeft ? emisLeft + " EMI" + (emisLeft > 1 ? "s" : "") + " left" : "", o.note || ""].filter(Boolean).join(" · ");
+  const badge = !nd ? `<span class="badge amber">Open</span>`
+    : nd.overdue ? `<span class="badge red">${esc(dueText(nd))}</span>`
+    : nd.paidNow ? `<span class="badge">✓ Paid this month</span>`
+    : `<span class="badge amber">${esc(dueText(nd))}</span>`;
+  return `<div class="card">
+    <button class="person" style="width:100%;text-align:left" onclick="openLoanDetail('${esc(o.id)}')">
+      <div class="avatar" style="font-size:19px">${k[1]}</div>
+      <div style="flex:1;min-width:0"><div class="pname">${esc(o.name)}</div><div class="psub">${esc(meta || k[0])}</div><div style="margin-top:7px">${badge}</div></div></button>
+    <div class="prog amber"><i style="width:${pct}%"></i></div>
+    <div class="kv"><span class="muted">Paid ${money(paid)} of ${money(total)}</span><span class="pending">${money(left)} left</span></div>
+    ${nd && nd.paidNow ? `<div class="kv"><span class="muted">Next EMI</span><span>${esc(dueText(nd))}</span></div>` : ""}
+    <div class="actions">
+      <button class="btn btn-primary btn-sm" onclick="openPay('${esc(o.id)}')">${emi ? "Pay EMI " + money(Math.min(emi, left)) : "Log a payment"}</button>
+      <button class="btn btn-soft btn-sm" onclick="openLoanDetail('${esc(o.id)}')">Details</button>
+    </div></div>`;
+}
+
+let loanForm = { kind: "EMI" };
+function openLoan(id){
+  const o = id ? owes.find(x => x.id === id) : null;
+  loanForm = { kind: (o && hasLoanCols && o.kind) || (o ? "Loan" : "EMI") };
+  openSheet(`
+    <div class="sheet-h"><h2>${o ? "Edit loan" : "New loan or EMI"}</h2><button class="x" onclick="closeSheet()" aria-label="Close">✕</button></div>
+    ${hasLoanCols ? `<div class="chips" id="lKinds" style="padding-top:0"></div>` : ""}
+    <label class="field"><span>Name</span><input class="input" id="lName" value="${o ? esc(o.name) : ""}" placeholder="e.g. Bike loan, iPhone EMI, Ravi"></label>
+    <div class="row2">
+      <label class="field"><span>Total to repay (₹)</span><input class="input" id="lTotal" inputmode="decimal" value="${o ? esc(o.total_amount) : ""}" placeholder="0"></label>
+      <label class="field"><span>Already paid (₹)</span><input class="input" id="lPaid" inputmode="decimal" value="${o && Number(o.paid_amount) ? esc(o.paid_amount) : ""}" placeholder="0"></label>
+    </div>
+    ${hasLoanCols ? `<div class="row2">
+      <label class="field"><span>Monthly EMI (₹)</span><input class="input" id="lEmi" inputmode="decimal" value="${o && o.emi_amount ? esc(o.emi_amount) : ""}" placeholder="Optional"></label>
+      <label class="field"><span>Due day each month</span><input class="input" id="lDue" inputmode="numeric" value="${o && o.due_day ? esc(o.due_day) : ""}" placeholder="e.g. 5"></label>
+    </div>` : ""}
+    <label class="field"><span>Note (optional)</span><input class="input" id="lNote" value="${o ? esc(o.note || "") : ""}" placeholder="e.g. Bajaj Finance, 14% interest"></label>
+    <div class="sheet-actions">
+      <button class="btn btn-primary" onclick="saveLoan(${o ? `'${esc(o.id)}'` : "null"})">${o ? "Save changes" : "Add"}</button>
+      ${o ? `<button class="btn btn-danger" onclick="armThen(this, () => deleteOwe('${esc(o.id)}'))">Delete loan</button>` : ""}
+    </div>`);
+  paintKinds();
+  if(!o) setTimeout(() => $("lName") && $("lName").focus(), 250);
+}
+function paintKinds(){
+  if(!$("lKinds")) return;
+  $("lKinds").innerHTML = LOAN_KINDS.map(([k, ic]) => `<button class="chip ${loanForm.kind === k ? "on" : ""}" onclick="loanForm.kind='${k}';paintKinds()">${ic} ${k}</button>`).join("");
+}
+async function saveLoan(id){
+  const name = $("lName").value.trim(), total = num($("lTotal").value), paid = Math.min(num($("lPaid").value), total);
+  if(!name || !total){ toast("Enter a name and the total amount"); return; }
+  const row = { name, total_amount: total, paid_amount: paid, note: $("lNote").value.trim() };
+  if(hasLoanCols){
+    const due = Math.round(num($("lDue").value));
+    if(due && (due < 1 || due > 31)){ toast("Due day must be between 1 and 31"); return; }
+    Object.assign(row, { kind: loanForm.kind, emi_amount: num($("lEmi").value) || null, due_day: due || null });
+  }
+  const res = id ? await sb.from("debts").update(row).eq("id", id).select()
+                 : await sb.from("debts").insert({ ...row, user_id: currentUser.id }).select();
+  if(res.error){ toast("Couldn't save: " + res.error.message); return; }
+  if(id){ const i = owes.findIndex(x => x.id === id); owes[i] = res.data[0]; } else owes.push(res.data[0]);
+  closeSheet(); renderAll(); toast(id ? "Loan saved" : "Loan added");
+}
+
+function openPay(id){
+  const o = owes.find(x => x.id === id); if(!o) return;
+  const left = loanLeft(o), emi = hasLoanCols ? Number(o.emi_amount) || 0 : 0;
+  const pre = emi ? Math.min(emi, left) : "";
+  openSheet(`
+    <div class="sheet-h"><h2>Pay ${esc(o.name)}</h2><button class="x" onclick="closeSheet()" aria-label="Close">✕</button></div>
+    <div class="muted">${money(left)} left to pay</div>
+    <div class="amount"><span>₹</span><input id="pAmt" type="text" inputmode="decimal" placeholder="0" value="${pre}" autocomplete="off"></div>
+    <div class="chips">${emi ? `<button class="chip" onclick="$('pAmt').value='${Math.min(emi, left)}'">EMI ${money(Math.min(emi, left))}</button>` : ""}<button class="chip" onclick="$('pAmt').value='${left}'">Pay all ${money(left)}</button></div>
+    <label class="field"><span>Date paid</span><input class="input" id="pDate" type="date" value="${ymd(new Date())}" max="${ymd(new Date())}"></label>
+    <p class="muted" style="font-size:13px;margin:12px 2px 0">This payment also shows in your spending as EMI/Debt.</p>
+    <div class="sheet-actions"><button class="btn btn-primary" id="pSave" onclick="savePay('${esc(o.id)}')">Save payment</button></div>`);
+  setTimeout(() => $("pAmt") && $("pAmt").focus(), 250);
+}
+async function savePay(id){
+  const o = owes.find(x => x.id === id); if(!o) return;
+  const amt = num($("pAmt").value), left = loanLeft(o);
+  if(!amt){ toast("Enter an amount"); return; }
+  if(amt > left + 0.001){ toast("That's more than the " + money(left) + " left"); return; }
+  const dv = $("pDate").value || ymd(new Date()); const [y, m, d] = dv.split("-").map(Number);
+  const emi = hasLoanCols ? Number(o.emi_amount) || 0 : 0;
+  const row = { user_id: currentUser.id, type: "Expense", cat: "EMI/Debt", amt, client_id: null, payment_type: null,
+    note: (emi && Math.abs(amt - emi) < 0.01 ? "EMI" : "Repayment") + " · " + o.name,
+    created_at: (dv === ymd(new Date()) ? new Date() : new Date(y, m - 1, d, 12)).toISOString() };
+  if(hasDebtLink) row.debt_id = o.id;
+  $("pSave").disabled = true;
+  const r = await writeTx("insert", row);
+  if(r.error){ $("pSave").disabled = false; toast("Couldn't save: " + r.error.message); return; }
+  const u = await sb.from("debts").update({ paid_amount: Math.min(Number(o.total_amount), Number(o.paid_amount) + amt) }).eq("id", id).select();
+  if(u.error){                                       // keep both in step: undo the payment if the loan didn't update
+    await sb.from("transactions").delete().eq("id", r.data[0].id);
+    $("pSave").disabled = false; toast("Couldn't save: " + u.error.message); return;
+  }
+  tx.push(r.data[0]); Object.assign(o, u.data[0]);
+  closeSheet(); renderAll();
+  const nl = loanLeft(o);
+  toast(nl > 0 ? `${money(amt)} paid · ${money(nl)} left` : `${o.name} is fully paid 🎉`);
+}
+// editing or deleting a payment that belongs to a loan moves the loan's paid amount with it
+async function adjustLoanPaid(debtId, delta){
+  const o = owes.find(x => x.id === debtId); if(!o || !delta) return;
+  const v = Math.max(0, Math.min(Number(o.total_amount), Number(o.paid_amount) + delta));
+  const { data, error } = await sb.from("debts").update({ paid_amount: v }).eq("id", debtId).select();
+  if(!error && data && data[0]) Object.assign(o, data[0]);
+}
+
+function openLoanDetail(id){
+  const o = owes.find(x => x.id === id); if(!o) return;
+  const pays = loanPayments(o), left = loanLeft(o), total = Number(o.total_amount), paid = Number(o.paid_amount);
+  const emi = hasLoanCols ? Number(o.emi_amount) || 0 : 0, nd = nextDue(o), k = loanKind(o);
+  const emisLeft = emi && left ? Math.ceil(left / emi) : 0;
+  const finish = emisLeft && nd ? new Date(nd.due.getFullYear(), nd.due.getMonth() + emisLeft - 1, 1).toLocaleDateString("en-IN", { month:"short", year:"numeric" }) : "";
+  openSheet(`
+    <div class="sheet-h"><h2>${k[1]} ${esc(o.name)}</h2><button class="x" onclick="closeSheet()" aria-label="Close">✕</button></div>
+    <div class="sum3">
+      <div class="stat"><div class="k">Total</div><b>${money(total)}</b></div>
+      <div class="stat"><div class="k">Paid</div><b class="paid">${money(paid)}</b></div>
+      <div class="stat"><div class="k">Left</div><b class="${left > 0 ? "pending" : "paid"}">${money(left)}</b></div>
+    </div>
+    ${emi ? `<div class="kv"><span class="muted">Monthly EMI</span><b>${money(emi)}</b></div>` : ""}
+    ${nd ? `<div class="kv"><span class="muted">Next due</span><b>${esc(nd.due.toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" }))}</b></div>` : ""}
+    ${emisLeft ? `<div class="kv"><span class="muted">EMIs left</span><b>${emisLeft}${finish ? " · last one around " + esc(finish) : ""}</b></div>` : ""}
+    ${o.note ? `<div class="kv"><span class="muted">Note</span><span>${esc(o.note)}</span></div>` : ""}
+    <div class="section-t">Payments</div>
+    ${pays.length ? pays.map(t => txRow(t, "date")).join("") : `<div class="muted" style="font-size:13.5px;padding:4px 2px 8px">${paid > 0 ? "Payments made before you started tracking aren't listed." : "No payments logged yet."}</div>`}
+    <div class="sheet-actions">
+      ${left > 0 ? `<button class="btn btn-primary" onclick="openPay('${esc(o.id)}')">${emi ? "Pay EMI " + money(Math.min(emi, left)) : "Log a payment"}</button>` : ""}
+      <button class="btn btn-soft" onclick="openLoan('${esc(o.id)}')">Edit loan</button>
+    </div>`);
+}
+async function deleteOwe(id){
+  const { error } = await sb.from("debts").delete().eq("id", id);
+  if(error){ toast("Couldn't delete: " + error.message); return; }
+  owes = owes.filter(o => o.id !== id);
+  tx.forEach(t => { if(t.debt_id === id) t.debt_id = null; });
+  closeSheet(); renderAll(); toast("Loan deleted");
+}
+
+// ======================================================
+// MORE
+// ======================================================
+function renderMore(){
+  $("v-more").innerHTML = `
+    <button class="back" onclick="go('home')">‹ Home</button>
+    <header class="top"><div><div class="hello">${esc(currentUser ? currentUser.email : "")}</div><h1>Settings</h1></div></header>
+    <div class="list">
+      <button class="li" onclick="go('import')"><span class="ico">📄</span><span class="t"><b>Import a statement</b><small>PhonePe, Google Pay, Paytm or bank PDF</small></span><span class="chev">›</span></button>
+      <button class="li" onclick="exportCSV()"><span class="ico">⬇️</span><span class="t"><b>Download backup</b><small>All transactions as a CSV file</small></span><span class="chev">›</span></button>
+      <button class="li" onclick="openInstall()"><span class="ico">📱</span><span class="t"><b>Add to iPhone home screen</b><small>Open it like an app</small></span><span class="chev">›</span></button>
+    </div>
+    <div class="list">
+      <button class="li" onclick="logout()"><span class="ico">🚪</span><span class="t"><b>Log out</b></span></button>
+    </div>
+    <div class="section-t">Danger zone</div>
+    <div class="list">
+      <button class="li danger" onclick="openClearAll()"><span class="ico">🗑️</span><span class="t"><b>Delete all transactions</b><small>This can't be undone, download a backup first</small></span></button>
+    </div>`;
+}
+function openInstall(){
+  openSheet(`
+    <div class="sheet-h"><h2>Add to home screen</h2><button class="x" onclick="closeSheet()" aria-label="Close">✕</button></div>
+    <ol style="padding-left:20px;line-height:1.9;margin:0">
+      <li>Open this site in <b>Safari</b>.</li>
+      <li>Tap the <b>Share</b> button (square with an arrow).</li>
+      <li>Choose <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+    </ol>
+    <p class="muted" style="font-size:13.5px">It opens full screen with its own icon, like an app, and stays logged in.</p>
+    <div class="sheet-actions"><button class="btn btn-soft" onclick="closeSheet()">Got it</button></div>`);
+}
+function openClearAll(){
+  openSheet(`
+    <div class="sheet-h"><h2>Delete all transactions?</h2><button class="x" onclick="closeSheet()" aria-label="Close">✕</button></div>
+    <p class="muted" style="margin-top:0">This removes all ${tx.length} transactions for good. Clients and debts stay. Type <b style="color:var(--text)">DELETE</b> to confirm.</p>
+    <input class="input" id="clr" placeholder="DELETE" autocomplete="off" oninput="$('clrBtn').disabled = this.value.trim() !== 'DELETE'">
+    <div class="sheet-actions">
+      <button class="btn btn-soft" onclick="exportCSV()">Download backup first</button>
+      <button class="btn btn-danger armed" id="clrBtn" disabled onclick="resetAll()">Delete everything</button>
+    </div>`);
+}
+async function resetAll(){
+  const { error } = await sb.from("transactions").delete().eq("user_id", currentUser.id);
+  if(error){ toast("Couldn't delete: " + error.message); return; }
+  tx = []; closeSheet(); renderAll(); toast("All transactions deleted");
+}
+function exportCSV(){
+  if(!tx.length){ toast("No transactions to back up yet"); return; }
+  const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const rows = tx.slice().sort((a,b) => txDate(b) - txDate(a)).map(t => {
+    const c = clients.find(x => x.id === t.client_id);
+    return [ymd(txDate(t)), t.type, q(t.cat), t.amt, q(t.note), q(c ? c.name : ""), q(t.payment_type || "")].join(",");
+  });
+  const csv = ["Date,Type,Category,Amount,Description,Client,PaymentType", ...rows].join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = `finance-backup-${ymd(new Date())}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  toast("Backup downloaded");
+}
+
+// ======================================================
+// IMPORT A STATEMENT (PDF)
+// ======================================================
+let importedRows = [], pendingPdfBuffer = null;
+function renderImport(){
+  $("v-import").innerHTML = `
+    <button class="back" onclick="go('more')">‹ Settings</button>
+    <header class="top"><div><div class="hello">PhonePe, Google Pay, Paytm or bank</div><h1>Import a statement</h1></div></header>
+    <label class="drop" for="pdfUploadInput"><span style="font-size:28px">📄</span><b>Choose a PDF statement</b><span style="font-size:13px">You'll review every entry before anything is saved</span></label>
+    <input id="pdfUploadInput" type="file" accept="application/pdf" class="hidden" onchange="handlePdfUpload(event)">
+    <div id="pdfPasswordFields" class="hidden">
+      <label class="field"><span>PDF password (often your mobile number, PAN or date of birth)</span><input class="input" id="pdfPassword" type="text"></label>
+      <div class="sheet-actions"><button class="btn btn-soft" onclick="retryPdfWithPassword()">Unlock and read</button></div>
+    </div>
+    <div id="importStatus" class="muted" style="font-size:13.5px;margin:12px 2px"></div>
+    <div id="importPreview"></div>
+    <div class="sheet-actions"><button id="importBtn" class="btn btn-primary hidden" onclick="importSelected()">Import selected</button></div>`;
+}
+function loadPdfJs(){
+  if(window.pdfjsLib) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload = () => { pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; res(); };
+    s.onerror = rej; document.head.appendChild(s);
   });
 }
-
-// ---------- PDF STATEMENT IMPORT ----------
-pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-let importedRows = [];
-
 function getPageLines(content){
   const lines = {};
-  content.items.forEach(item=>{
-    const y = Math.round(item.transform[5]);
-    if(!lines[y]) lines[y] = [];
-    lines[y].push(item.str);
-  });
-  const ys = Object.keys(lines).map(Number).sort((a,b)=>b-a);
-  return ys.map(y=>lines[y].join(' ').trim()).filter(Boolean);
+  content.items.forEach(item => { const y = Math.round(item.transform[5]); (lines[y] = lines[y] || []).push(item.str); });
+  return Object.keys(lines).map(Number).sort((a,b) => b - a).map(y => lines[y].join(" ").trim()).filter(Boolean);
 }
-
-let pendingPdfBuffer = null;
-
 async function handlePdfUpload(event){
-  const file = event.target.files[0];
-  if(!file) return;
-  const statusEl = document.getElementById("importStatus");
-  document.getElementById("pdfPasswordFields").classList.add("hidden");
-  statusEl.textContent = "Reading PDF...";
-  document.getElementById("importBtn").classList.add("hidden");
-  document.getElementById("importPreview").innerHTML = "";
-  const arrayBuffer = await file.arrayBuffer();
-  pendingPdfBuffer = arrayBuffer;
-  await loadPdfAndParse(arrayBuffer, null);
+  const file = event.target.files[0]; if(!file) return;
+  $("pdfPasswordFields").classList.add("hidden");
+  $("importStatus").textContent = "Reading PDF…";
+  $("importBtn").classList.add("hidden"); $("importPreview").innerHTML = "";
+  pendingPdfBuffer = await file.arrayBuffer();
+  await loadPdfAndParse(pendingPdfBuffer, null);
 }
-
 async function retryPdfWithPassword(){
-  const password = document.getElementById("pdfPassword").value;
-  if(!password || !pendingPdfBuffer) return;
-  document.getElementById("importStatus").textContent = "Unlocking PDF...";
-  await loadPdfAndParse(pendingPdfBuffer, password);
+  const p = $("pdfPassword").value; if(!p || !pendingPdfBuffer) return;
+  $("importStatus").textContent = "Unlocking PDF…";
+  await loadPdfAndParse(pendingPdfBuffer, p);
 }
-
-async function loadPdfAndParse(arrayBuffer, password){
-  const statusEl = document.getElementById("importStatus");
+async function loadPdfAndParse(buf, password){
+  const st = $("importStatus");
   try{
-    const opts = { data: arrayBuffer.slice(0) };
-    if(password) opts.password = password;
+    await loadPdfJs();
+    const opts = { data: buf.slice(0) }; if(password) opts.password = password;
     const pdf = await pdfjsLib.getDocument(opts).promise;
-    document.getElementById("pdfPasswordFields").classList.add("hidden");
-    let allLines = [];
-    for(let i=1;i<=pdf.numPages;i++){
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      allLines = allLines.concat(getPageLines(content));
-    }
-    statusEl.textContent = "Parsing transactions...";
-    const parsed = parseStatementLines(allLines);
-    if(parsed.length === 0){
-      statusEl.textContent = "Couldn't automatically detect transactions in this PDF. You can still add entries manually below.";
-      return;
-    }
-    statusEl.textContent = `${parsed.length} transaction(s) found. Review before importing — uncheck or edit anything that looks wrong.`;
-    renderImportPreview(parsed);
-    document.getElementById("importBtn").classList.remove("hidden");
+    $("pdfPasswordFields").classList.add("hidden");
+    let all = [];
+    for(let i = 1; i <= pdf.numPages; i++){ const page = await pdf.getPage(i); all = all.concat(getPageLines(await page.getTextContent())); }
+    const parsed = parseStatementLines(all);
+    if(!parsed.length){ st.textContent = "Couldn't find transactions in this PDF automatically. You can still add them with the + button."; return; }
+    st.textContent = `${parsed.length} transaction(s) found. Untick or fix anything that looks wrong, then import.`;
+    renderImportPreview(parsed); $("importBtn").classList.remove("hidden");
   }catch(err){
     if(err && err.name === "PasswordException"){
-      document.getElementById("pdfPasswordFields").classList.remove("hidden");
-      statusEl.textContent = password
-        ? "That password didn't work — try again."
-        : "This PDF is password-protected. Enter the password below to unlock it.";
-    } else {
-      statusEl.textContent = "Couldn't read this PDF (it may be corrupted or an unsupported format).";
-      console.error(err);
-    }
+      $("pdfPasswordFields").classList.remove("hidden");
+      st.textContent = password ? "That password didn't work. Try again." : "This PDF is password-protected. Enter the password below.";
+    } else { st.textContent = "Couldn't read this PDF. It may be damaged or in a format we don't support."; console.error(err); }
   }
 }
-
-// Guesses a category from merchant/description text using keyword matching.
-// Categories match exactly the options in the manual "Add Transaction" dropdown.
 function guessCategory(desc, type){
   const d = (desc || "").toLowerCase();
   const rules = [
-    { cat: "Cigarettes", words: ["cigarette","cigar","tobacco","panwala","pan shop","gutkha"] },
-    { cat: "Tea/Coffee", words: ["tea stall","chai","coffee","starbucks","ccd","cafe coffee","tea point"] },
-    { cat: "Fuel", words: ["petrol","diesel","fuel","hpcl","iocl","bpcl","indian oil","hindustan petroleum","bharat petroleum","shell","filling station","petroleum"] },
-    { cat: "Food", words: ["swiggy","zomato","restaurant","food","eatery","dine","dhaba","biryani","hotel","kitchen","foods","bakery","sweets"] },
-    { cat: "Medical", words: ["pharmacy","hospital","medical","clinic","medicine","apollo","chemist","diagnostic","health"] },
-    { cat: "Travel", words: ["uber","ola","irctc","railway","train","flight","indigo","airlines","redbus","cab","travels","metro","toll","parking"] },
-    { cat: "Bills", words: ["recharge","electricity","broadband","wifi","dth","postpaid","prepaid","gas bill","water bill","utility"] },
-    { cat: "EMI/Debt", words: ["emi","loan","installment","lending","credit card bill"] },
-    { cat: "Camera Gear", words: ["camera","lens","tripod","gimbal","photography","videography"] },
-    { cat: "Entertainment", words: ["netflix","spotify","prime video","bookmyshow","movie","cinema","hotstar","youtube premium","gaming"] },
-    { cat: "Shopping", words: ["amazon","flipkart","myntra","mall","store","mart","supermarket","shopping","reliance trends","dmart"] },
+    ["Cigarettes", ["cigarette","cigar","tobacco","panwala","pan shop","gutkha"]],
+    ["Tea/Coffee", ["tea stall","chai","coffee","starbucks","ccd","cafe coffee","tea point"]],
+    ["Fuel", ["petrol","diesel","fuel","hpcl","iocl","bpcl","indian oil","hindustan petroleum","bharat petroleum","shell","filling station","petroleum"]],
+    ["Food", ["swiggy","zomato","restaurant","food","eatery","dine","dhaba","biryani","hotel","kitchen","foods","bakery","sweets"]],
+    ["Medical", ["pharmacy","hospital","medical","clinic","medicine","apollo","chemist","diagnostic","health"]],
+    ["Travel", ["uber","ola","irctc","railway","train","flight","indigo","airlines","redbus","cab","travels","metro","toll","parking"]],
+    ["Bills", ["recharge","electricity","broadband","wifi","dth","postpaid","prepaid","gas bill","water bill","utility"]],
+    ["EMI/Debt", ["emi","loan","installment","lending","credit card bill"]],
+    ["Camera Gear", ["camera","lens","tripod","gimbal","photography","videography"]],
+    ["Entertainment", ["netflix","spotify","prime video","bookmyshow","movie","cinema","hotstar","youtube premium","gaming"]],
+    ["Shopping", ["amazon","flipkart","myntra","mall","store","mart","supermarket","shopping","reliance trends","dmart"]],
   ];
-  for(const rule of rules){
-    if(rule.words.some(w => d.includes(w))) return rule.cat;
-  }
+  for(const [cat, words] of rules) if(words.some(w => d.includes(w))) return cat;
   return type === "Income" ? "Freelance Payment" : "Other";
 }
-
+const MONTHS = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+// "Jan 01, 2026", "01 Jan 2026", "01/01/2026", "01-01-26" (day first) or "2026-01-01" → Date at noon, or null
+function parseDateStr(s){
+  if(!s) return null; s = s.trim(); let y, m, d, x;
+  if((x = s.match(/^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})$/))){ m = MONTHS.indexOf(x[1].slice(0,3).toLowerCase()); d = +x[2]; y = +x[3]; }
+  else if((x = s.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\.?,?\s+(\d{4})$/))){ d = +x[1]; m = MONTHS.indexOf(x[2].slice(0,3).toLowerCase()); y = +x[3]; }
+  else if((x = s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/))){ y = +x[1]; m = +x[2] - 1; d = +x[3]; }
+  else if((x = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/))){ d = +x[1]; m = +x[2] - 1; y = +x[3]; if(y < 100) y += 2000; }
+  if(m == null || m < 0 || !y || !d) return null;
+  const dt = new Date(y, m, d, 12, 0, 0);
+  return isNaN(dt) || dt > new Date() ? null : dt;
+}
 function parseStatementLines(lines){
-  // Matches many common date formats: "Jan 01, 2026", "01 Jan 2026",
-  // "01/01/2026", "01-01-2026", "2026-01-01"
   const dateRegex = /^(?:[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}\s+[A-Za-z]{3,9}\.?,?\s+\d{4}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2})$/;
-
-  // Matches ₹500, Rs.500, Rs 500, INR 500, or plain 500.00 followed by Dr/Cr
   const amountRegex = /(?:₹|Rs\.?|INR)\s?([\d,]+(?:\.\d{1,2})?)|\b([\d,]+\.\d{2})\s?(?:Dr|Cr|DR|CR)\b/;
-
-  const results = [];
-  let currentDate = null;
-  let buffer = [];
-
+  const results = []; let currentDate = null, buffer = [];
   function flush(){
-    if(buffer.length === 0) return;
-    const blockText = buffer.join(' ');
-    const amtMatch = blockText.match(amountRegex);
-    if(amtMatch){
-      const raw = amtMatch[1] || amtMatch[2];
-      const amount = parseFloat(raw.replace(/,/g,''));
+    if(!buffer.length) return;
+    const block = buffer.join(" "), am = block.match(amountRegex);
+    if(am){
+      const amount = parseFloat((am[1] || am[2]).replace(/,/g, ""));
       let type = "Expense";
-      if(/\bcr\b|credited|credit(?!ed to)|received|deposit/i.test(blockText)) type = "Income";
-      if(/\bdr\b|debited|debit|paid|withdrawal|payment to|sent/i.test(blockText)) type = "Expense";
-      let desc = blockText
-        .replace(amountRegex,'')
-        .replace(/\b(debit|credit(ed)?|received|paid to|paid|withdrawal|deposit|dr|cr|transaction id.*$|ref no.*$|utr.*$)\b/gi,'')
-        .replace(/\s+/g,' ')
-        .trim()
-        .slice(0,60);
-      desc = desc || "Imported transaction";
-      if(amount > 0){
-        const cat = guessCategory(desc, type);
-        results.push({ date: currentDate, type, amount, desc, cat });
-      }
+      if(/\bcr\b|credited|credit(?!ed to)|received|deposit/i.test(block)) type = "Income";
+      if(/\bdr\b|debited|debit|paid|withdrawal|payment to|sent/i.test(block)) type = "Expense";
+      let desc = block.replace(amountRegex, "")
+        .replace(/\b(debit|credit(ed)?|received|paid to|paid|withdrawal|deposit|dr|cr|transaction id.*$|ref no.*$|utr.*$)\b/gi, "")
+        .replace(/\s+/g, " ").trim().slice(0, 60) || "Imported transaction";
+      if(amount > 0) results.push({ date: currentDate, when: parseDateStr(currentDate), type, amount, desc, cat: guessCategory(desc, type) });
     }
     buffer = [];
   }
-
-  lines.forEach(line=>{
-    if(dateRegex.test(line)){
-      flush();
-      currentDate = line;
-    } else {
-      buffer.push(line);
-      if(amountRegex.test(line)) flush();
-    }
-  });
+  lines.forEach(line => { if(dateRegex.test(line)){ flush(); currentDate = line; } else { buffer.push(line); if(amountRegex.test(line)) flush(); } });
   flush();
   return results;
 }
-
 function renderImportPreview(rows){
   importedRows = rows;
-  const el = document.getElementById("importPreview");
-  el.innerHTML = rows.map((r,i)=>`
-    <div class="item">
-      <label style="display:flex;align-items:center;gap:8px;margin:0">
-        <input type="checkbox" id="imp-check-${i}" checked style="width:auto;margin:0">
-        <span style="flex:1;font-size:13px">${r.date ? r.date + " — " : ""}${r.desc}</span>
-      </label>
-      <div class="row" style="margin-top:8px;gap:8px">
-        <select id="imp-type-${i}" style="margin:0">
-          <option value="Expense" ${r.type==='Expense'?'selected':''}>Expense</option>
-          <option value="Income" ${r.type==='Income'?'selected':''}>Income</option>
-        </select>
-        <input id="imp-amt-${i}" type="number" value="${r.amount}" style="margin:0">
+  const allCats = [...OUT_CATS.map(c => c[0]), ...IN_CATS.map(c => c[0]).filter(c => !OUT_CATS.some(o => o[0] === c))];
+  $("importPreview").innerHTML = rows.map((r, i) => `
+    <div class="imp">
+      <input type="checkbox" id="imp-check-${i}" checked>
+      <div>
+        <div class="d"><b>${r.when ? esc(r.when.toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })) : "No date found"}</b> · ${esc(r.desc)}</div>
+        <div class="r">
+          <select class="input" id="imp-type-${i}"><option value="Expense" ${r.type === "Expense" ? "selected" : ""}>Money out</option><option value="Income" ${r.type === "Income" ? "selected" : ""}>Money in</option></select>
+          <input class="input" id="imp-amt-${i}" inputmode="decimal" value="${esc(r.amount)}">
+        </div>
+        <select class="input" id="imp-cat-${i}" style="margin-top:8px">${allCats.map(c => `<option ${r.cat === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
       </div>
-      <select id="imp-cat-${i}" style="margin:8px 0 0 0">
-        ${["Food","Fuel","Tea/Coffee","Cigarettes","Shopping","Travel","Medical","Bills","EMI/Debt","Camera Gear","Entertainment","Freelance Payment","Other"]
-          .map(c => `<option value="${c}" ${r.cat===c?'selected':''}>${c}</option>`).join('')}
-      </select>
-    </div>
-  `).join('');
+    </div>`).join("");
 }
-
 async function importSelected(){
-  const toInsert = [];
-  importedRows.forEach((r,i)=>{
-    const checkEl = document.getElementById(`imp-check-${i}`);
-    if(!checkEl || !checkEl.checked) return;
-    const type = document.getElementById(`imp-type-${i}`).value;
-    const amt = Number(document.getElementById(`imp-amt-${i}`).value);
-    const cat = document.getElementById(`imp-cat-${i}`).value;
-    if(!amt) return;
-    toInsert.push({
-      user_id: currentUser.id,
-      type,
-      cat,
-      note: r.desc || "Imported from statement",
-      amt
-    });
+  const rows = [];
+  importedRows.forEach((r, i) => {
+    if(!$(`imp-check-${i}`) || !$(`imp-check-${i}`).checked) return;
+    const amt = parseFloat($(`imp-amt-${i}`).value.replace(/[^\d.]/g, "")); if(!amt) return;
+    const row = { user_id: currentUser.id, type: $(`imp-type-${i}`).value, cat: $(`imp-cat-${i}`).value, note: r.desc || "Imported from statement", amt };
+    if(r.when) row.created_at = r.when.toISOString();       // keep the real payment date
+    rows.push(row);
   });
-  if(toInsert.length === 0){ alert("No transactions selected to import."); return; }
-  const { data, error } = await sb.from("transactions").insert(toInsert).select();
-  if(error){ alert("Import failed: " + error.message); return; }
-  tx.push(...data);
-  render();
-  renderClients();
-  document.getElementById("importPreview").innerHTML = "";
-  document.getElementById("importBtn").classList.add("hidden");
-  document.getElementById("importStatus").textContent = `${data.length} transaction(s) imported successfully.`;
-  document.getElementById("pdfUploadInput").value = "";
-  showTab('overview');
+  if(!rows.length){ toast("Nothing selected to import"); return; }
+  const { data, error } = await writeTx("insert", rows);
+  if(error){ toast("Import failed: " + error.message); return; }
+  tx.push(...data); importedRows = [];
+  toast(`${data.length} transaction(s) imported`);
+  go("activity");
 }
 
-// ---------- TRANSACTIONS ----------
-async function loadTx(){
-  const { data, error } = await sb
-    .from("transactions")
-    .select("*")
-    .order("created_at", { ascending: true });
-  if(error){ console.error(error); return; }
-  tx = data || [];
-  render();
-  renderClients();
+// ======================================================
+// SHEET
+// ======================================================
+function openSheet(html){
+  $("sheet").innerHTML = `<div class="grab"></div>` + html;
+  $("sheetWrap").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
 }
-
-async function addTx(){
-  const amt = Number(document.getElementById("amt").value);
-  if(!amt) return;
-  const isIncome = document.getElementById("type").value === "Income";
-  const entry = {
-    user_id: currentUser.id,
-    type: document.getElementById("type").value,
-    cat: document.getElementById("cat").value,
-    note: document.getElementById("note").value || "No description",
-    amt,
-    client_id: isIncome ? (document.getElementById("clientSelect").value || null) : null,
-    payment_type: isIncome ? document.getElementById("paymentType").value : null
-  };
-  const { data, error } = await sb.from("transactions").insert(entry).select();
-  if(error){ alert("Couldn't save: " + error.message); return; }
-  tx.push(data[0]);
-  document.getElementById("amt").value = "";
-  document.getElementById("note").value = "";
-  render();
-  renderClients();
-  showTab('overview');
+function closeSheet(){
+  $("sheetWrap").classList.add("hidden");
+  document.body.style.overflow = "";
 }
+document.addEventListener("keydown", e => {
+  if(e.key === "Escape") closeSheet();
+  if(e.key === "Enter" && !$("sheetWrap").classList.contains("hidden") && e.target.tagName === "INPUT" && $("txSave")) saveTx();
+  if(e.key === "Enter" && !$("authScreen").classList.contains("hidden") && e.target.tagName === "INPUT") handleAuth();
+});
 
-async function deleteTx(id){
-  const { error } = await sb.from("transactions").delete().eq("id", id);
-  if(error){ alert("Couldn't delete: " + error.message); return; }
-  tx = tx.filter(t => t.id !== id);
-  render();
-  renderClients();
-}
-
-async function resetAll(){
-  if(!confirm("Delete all transactions? This can't be undone.")) return;
-  const { error } = await sb.from("transactions").delete().eq("user_id", currentUser.id);
-  if(error){ alert("Couldn't clear: " + error.message); return; }
-  tx = [];
-  render();
-  renderClients();
-}
-
-// ---------- BACKUP / EXPORT ----------
-function exportCSV(){
-  if(tx.length === 0){ alert("No transactions to export yet."); return; }
-  const headers = ["Date","Type","Category","Amount","Description","Client","PaymentType"];
-  const rows = tx.slice().reverse().map(t=>{
-    const client = clients.find(c => c.id === t.client_id);
-    const date = t.created_at ? new Date(t.created_at).toLocaleDateString("en-IN") : "";
-    const esc = v => `"${String(v||"").replace(/"/g,'""')}"`;
-    return [date, t.type, t.cat, t.amt, esc(t.note), esc(client?client.name:""), esc(t.payment_type||"")].join(",");
-  });
-  const csv = [headers.join(","), ...rows].join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `finance-calculator-backup-${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-// ---------- RENDER ----------
-function render(){
-  let income=0, expense=0;
-  const list = document.getElementById("list");
-  if(tx.length === 0){
-    list.innerHTML = '<div class="empty">No transactions yet — add one from the "Add Transaction" tab.</div>';
-  } else {
-    list.innerHTML = "";
-    tx.slice().reverse().forEach(t=>{
-      const client = clients.find(c => c.id === t.client_id);
-      const tagHtml = t.type==="Income"
-        ? `<div class="tag">${t.payment_type||"Payment"}${client ? " · " + client.name : ""}</div>`
-        : "";
-      list.innerHTML += `<div class="item"><div class="row"><b>${t.cat}</b><b style="color:${t.type==="Income"?"#22c55e":"#ef4444"}">${t.type==="Income"?"+":"-"}${money(Number(t.amt))}</b></div><div>${t.note}</div>${tagHtml}<button class="del" onclick="deleteTx('${t.id}')">Delete</button></div>`;
-    });
+// ======================================================
+// DEMO MODE (?demo) – sample data kept in memory, nothing is sent anywhere
+// ======================================================
+function demoClient(){
+  const user = { id: "demo-user", email: "demo@preview.app" };
+  const id = () => Math.random().toString(36).slice(2, 10);
+  const day = (ago, h) => { const d = new Date(); d.setDate(d.getDate() - ago); d.setHours(h, (ago * 7) % 60, 0, 0); return d.toISOString(); };
+  const cl = [
+    { id: "c1", user_id: user.id, name: "Wedding film – Sai & Priya", total_amount: 60000, phone: "919800000001", created_at: day(80, 10) },
+    { id: "c2", user_id: user.id, name: "Cafe Bloom reels", total_amount: 18000, phone: "919800000002", created_at: day(40, 10) },
+    { id: "c3", user_id: user.id, name: "Product shoot – Aroma", total_amount: 12000, phone: "", created_at: day(20, 10) },
+  ];
+  const t = (ago, h, type, cat, amt, note, client_id, payment_type, debt_id) => ({ id: id(), user_id: user.id, type, cat, amt, note, client_id: client_id || null, payment_type: payment_type || null, debt_id: debt_id || null, created_at: day(ago, h) });
+  const txs = [
+    t(0,9,"Expense","Tea/Coffee",40,"Morning chai"), t(0,13,"Expense","Food",260,"Lunch"), t(0,18,"Expense","Fuel",500,"Petrol"),
+    t(1,11,"Income","Freelance Payment",10000,"Second instalment","c1","Partial"), t(1,20,"Expense","Food",420,"Dinner with team"),
+    t(2,10,"Expense","Medical",205,"Pharmacy"), t(3,16,"Expense","Shopping",1299,"SD card"), t(4,9,"Expense","Travel",180,"Auto"),
+    t(5,19,"Expense","Entertainment",199,"Movie"), t(6,12,"Expense","Bills",399,"Mobile recharge"), t(7,15,"Income","Freelance Payment",9000,"Advance","c2","Advance"),
+    t(8,13,"Expense","Food",310,"Biryani"), t(9,10,"Expense","Camera Gear",3500,"Lens filter"), t(10,8,"Expense","Tea/Coffee",60,"Coffee"),
+    t(12,17,"Expense","Self Transfer",5000,"Kotak to Union"), t(12,17,"Income","Self Transfer",5000,"Kotak to Union"),
+    t(14,11,"Expense","EMI/Debt",4500,"EMI · Bike loan",null,null,"d1"), t(16,14,"Expense","Food",180,"Snacks"), t(18,9,"Income","Freelance Payment",6000,"Advance","c3","Advance"),
+    t(22,12,"Expense","Fuel",600,"Petrol"), t(26,19,"Expense","Shopping",2200,"Shoes"), t(30,10,"Income","Freelance Payment",20000,"Advance","c1","Advance"),
+    t(33,13,"Expense","Food",350,"Lunch"), t(38,18,"Expense","Bills",1200,"Electricity"), t(45,11,"Expense","Travel",900,"Bus to Vizag"),
+    t(52,10,"Income","Freelance Payment",15000,"Final payment"), t(60,15,"Expense","Camera Gear",8000,"Gimbal service"), t(70,12,"Expense","Food",2400,"Groceries & eating out"),
+    t(85,10,"Income","Freelance Payment",22000,"Shoot payment"), t(95,12,"Expense","EMI/Debt",4500,"EMI · Bike loan",null,null,"d1"), t(28,10,"Expense","EMI/Debt",4000,"EMI · iPhone 15",null,null,"d2"), t(40,10,"Expense","EMI/Debt",3000,"EMI · Camera (Canon R50)",null,null,"d3"), t(120,12,"Income","Salary",18000,"Part-time edit job"),
+    t(125,12,"Expense","Food",3100,"Month food"), t(150,12,"Income","Freelance Payment",14000,"Reels package"), t(155,12,"Expense","Shopping",5200,"Hard disk"),
+  ];
+  const debts = [
+    { id: "d1", user_id: user.id, name: "Bike loan", kind: "EMI", total_amount: 54000, paid_amount: 22500, emi_amount: 4500, due_day: 5, note: "Bajaj Finance", created_at: day(200, 10) },
+    { id: "d2", user_id: user.id, name: "iPhone 15", kind: "EMI", total_amount: 48000, paid_amount: 16000, emi_amount: 4000, due_day: 25, note: "", created_at: day(120, 10) },
+    { id: "d3", user_id: user.id, name: "Camera (Canon R50)", kind: "EMI", total_amount: 36000, paid_amount: 21000, emi_amount: 3000, due_day: 18, note: "No-cost EMI", created_at: day(150, 10) },
+    { id: "d4", user_id: user.id, name: "Ravi (friend)", kind: "Borrowed", total_amount: 3000, paid_amount: 1000, emi_amount: null, due_day: null, note: "Return by Dec", created_at: day(30, 10) },
+  ];
+  const db = { transactions: txs, clients: cl, debts };
+  function q(table){
+    let op = "select", payload = null; const filters = [];
+    const api = {
+      select(){ return api; }, order(){ return api; }, limit(){ return api; },
+      insert(p){ op = "insert"; payload = Array.isArray(p) ? p : [p]; return api; },
+      update(p){ op = "update"; payload = p; return api; },
+      delete(){ op = "delete"; return api; },
+      eq(c, v){ filters.push([c, v]); return api; },
+      then(res, rej){
+        const rows = db[table]; const match = r => filters.every(([c, v]) => r[c] === v); let data = [];
+        if(op === "select") data = rows.slice();
+        if(op === "insert"){ data = payload.map(r => ({ id: id(), created_at: new Date().toISOString(), client_id: null, payment_type: null, ...r })); rows.push(...data); }
+        if(op === "update"){ rows.forEach(r => { if(match(r)) { Object.assign(r, payload); data.push({ ...r }); } }); }
+        if(op === "delete"){ db[table] = rows.filter(r => !match(r)); }
+        return Promise.resolve({ data: JSON.parse(JSON.stringify(data)), error: null }).then(res, rej);
+      }
+    };
+    return api;
   }
-  tx.forEach(t=>{
-    if(t.type==="Income") income+=Number(t.amt); else expense+=Number(t.amt);
-  });
-  document.getElementById("inc").textContent = money(income);
-  document.getElementById("exp").textContent = money(expense);
-  document.getElementById("bal").textContent = money(income-expense);
+  return {
+    auth: {
+      getSession: async () => ({ data: { session: { user } } }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe(){} } } }),
+      signInWithPassword: async () => ({ data: { session: { user } } }),
+      signUp: async () => ({ data: { session: { user } } }),
+      signOut: async () => ({}), resetPasswordForEmail: async () => ({}), updateUser: async () => ({}),
+    },
+    from: q,
+  };
 }
 </script>
 </body>
