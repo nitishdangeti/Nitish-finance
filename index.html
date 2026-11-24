@@ -1287,18 +1287,25 @@ function suggestCat(p){
 }
 
 // ---------- inbox (needs supabase/sms_inbox.sql) ----------
-let inbox = [], hasInbox = false;
+let inbox = [], hasInbox = false, inboxLoadedAt = 0;
 async function loadInbox(){
   const { data, error } = await sb.from("sms_inbox").select("*").order("received_at", { ascending: true });
-  hasInbox = !error; inbox = error ? [] : (data || []);
+  hasInbox = !error; inbox = error ? [] : (data || []); inboxLoadedAt = Date.now();
 }
+// coming back to the app (e.g. after a payment): pick up SMS that arrived while it was in the background
+document.addEventListener("visibilitychange", async () => {
+  if(document.visibilityState !== "visible" || !currentUser || Date.now() - inboxLoadedAt < 15e3) return;
+  await loadInbox(); renderAll();
+});
 function inboxItems(){
   return inbox.map(i => ({ i, p: parseBankSms(i.sms), when: new Date(i.received_at) })).filter(x => x.p.amount > 0 && x.p.type);
 }
-async function removeInbox(ids){
-  ids = ids.filter(Boolean); if(!ids.length) return;
+async function removeInbox(ids, ref){
+  ids = ids.filter(Boolean);
   for(const id of ids) await sb.from("sms_inbox").delete().eq("id", id);
-  inbox = inbox.filter(i => !ids.includes(i.id));
+  // also any copy of the same SMS (same bank ref) that reached the inbox after this page loaded it
+  if(ref) await sb.from("sms_inbox").delete().eq("ref", ref);
+  inbox = inbox.filter(i => !ids.includes(i.id) && !(ref && i.ref === ref));
 }
 function inboxIdsFor(ref, id){ return inbox.filter(i => i.id === id || (ref && i.ref === ref)).map(i => i.id); }
 
@@ -1365,7 +1372,11 @@ function openSmsFromHash(){
   const queued = inbox.find(i => p.ref && i.ref === p.ref);              // the automation already put it in the inbox
   openSmsSheet(p, { inboxId: queued ? queued.id : null, when: queued ? new Date(queued.received_at) : new Date() });
 }
-window.addEventListener("hashchange", () => { if(currentUser && location.hash.startsWith("#sms=")) openSmsFromHash(); });
+window.addEventListener("hashchange", async () => {
+  if(!currentUser || !location.hash.startsWith("#sms=")) return;
+  await loadInbox(); renderAll();          // the page may have been open for a while: get the SMS the automation just added
+  openSmsFromHash();
+});
 
 function openSmsSheet(p, opts){
   opts = opts || {};
@@ -1422,7 +1433,7 @@ async function saveSms(cat){
                 client_id: isIn ? (f.client || null) : null, payment_type: isIn ? f.pay : null, created_at: f.when.toISOString() };
   const r = await writeTx("insert", row);
   if(r.error){ toast("Couldn't save: " + r.error.message); return; }
-  tx.push(r.data[0]); await removeInbox(inboxIdsFor(f.p.ref, f.inboxId));
+  tx.push(r.data[0]); await removeInbox(inboxIdsFor(f.p.ref, f.inboxId), f.p.ref);
   closeSheet(); renderAll();
   toast(`Saved ${money(amt)} · ${cat}`);
 }
@@ -1430,13 +1441,13 @@ async function saveSmsLoan(id){
   const o = owes.find(x => x.id === id), f = smsForm, amt = num($("sAmt").value); if(!o) return;
   const ok = await recordLoanPayment(o, Math.min(amt, loanLeft(o)), f.when.toISOString(), [f.party, f.p.account].filter(Boolean).join(" · "));
   if(!ok) return;
-  await removeInbox(inboxIdsFor(f.p.ref, f.inboxId));
+  await removeInbox(inboxIdsFor(f.p.ref, f.inboxId), f.p.ref);
   closeSheet(); renderAll();
   const nl = loanLeft(o);
   toast(nl > 0 ? `${o.name}: ${money(amt)} paid · ${money(nl)} left` : `${o.name} is fully paid 🎉`);
 }
 async function dismissSms(){
-  await removeInbox(inboxIdsFor(smsForm.p.ref, smsForm.inboxId));
+  await removeInbox(inboxIdsFor(smsForm.p.ref, smsForm.inboxId), smsForm.p.ref);
   closeSheet(); renderAll(); toast("Removed from To review");
 }
 
