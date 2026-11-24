@@ -663,6 +663,10 @@ function statementBank(lines){
 }
 // the account holder's name: the line just above "Account No." (Kotak, Union and most banks print it there)
 function statementHolder(lines){
+  for(const l of lines.slice(0, 80)){
+    const x = l.replace(/\s+/g, " ").trim().match(/^(?:account name|account holder(?: name)?|customer name|name)\s*:?\s+(?:MR\.?|MRS\.?|MS\.?|MISS)?\s*([A-Za-z][A-Za-z .]{3,40})$/i);
+    if(x && x[1].trim().split(" ").length >= 2) return x[1].trim();
+  }
   for(let i = 1; i < Math.min(lines.length, 400); i++){
     if(/^account\s*(no|number)\b/i.test(lines[i].trim())){
       const name = lines[i - 1].replace(/\s+/g, " ").trim();
@@ -1293,31 +1297,40 @@ function parseDateStr(s){
 const MONEY = "-?[\\d,]+\\.\\d{2}";
 function parseBalanceTable(lines){
   const dateRe = /(\d{1,2}[\s\-\/](?:[A-Za-z]{3,9}|\d{1,2})[\s\-\/]\d{2,4})/;
-  const rowRe = new RegExp("^(?:\\d+\\s+)?" + dateRe.source + "\\s+(.*?)\\s+(" + MONEY + ")\\s+(" + MONEY + ")(?:\\s*(?:Cr|Dr|CR|DR))?$");
-  const openRe = new RegExp("opening balance.*?(" + MONEY + ")\\s*$", "i");
-  const stopRe = /page \d+ of \d+|statement generated|withdrawal|deposit \(|closing balance|account no\.?|account statement|savings account transactions|end of statement/i;
+  // an amount, optionally marked "(Dr)" / "(Cr)" (Union) or "Dr" / "Cr"
+  const AMT = "(" + MONEY + ")(?:\\s*\\(?(Dr|Cr|DR|CR)\\)?)?";
+  const rowRe = new RegExp("^(?:\\d+\\s+)?" + dateRe.source + "\\s+(.*?)\\s+" + AMT + "\\s+" + AMT + "$");
+  const openRe = new RegExp("opening balance.*?(" + MONEY + ")\\s*(?:\\(?(Dr|Cr)\\)?)?\\s*$", "i");
+  const stopRe = /page \d+ of \d+|statement generated|withdrawal|deposit \(|closing balance|account no\.?|account statement|savings account transactions|end of statement|^date\b|^transaction|^id\b|amount\(|balance\(/i;
   const n = v => parseFloat(String(v).replace(/,/g, ""));
-  const rows = []; let bal = null, cur = null;
+  const signed = (v, mark) => (mark && /dr/i.test(mark) ? -1 : 1) * n(v);   // a balance marked (Dr) is overdrawn
+  const rows = []; let bal = null, cur = null, prev = "";
   for(const raw of lines){
     const line = raw.replace(/\s+/g, " ").trim();
     const op = line.match(openRe);
-    if(op && bal == null){ bal = n(op[1]); cur = null; continue; }
+    if(op && bal == null){ bal = signed(op[1], op[2]); cur = null; prev = ""; continue; }
     const m = line.match(rowRe);
     if(m){
-      const amt = Math.abs(n(m[3])), newBal = n(m[4]);
+      const amt = Math.abs(n(m[3])), mark = m[4] || "", newBal = signed(m[5], m[6]);
       let type = null, checked = false;
       if(bal != null){
         if(Math.abs(bal - amt - newBal) < 0.005){ type = "Expense"; checked = true; }
         else if(Math.abs(bal + amt - newBal) < 0.005){ type = "Income"; checked = true; }
       }
+      if(!type && mark) type = /dr/i.test(mark) ? "Expense" : "Income";
       if(!type) type = /\b(cr|credit|recd|received|deposit|refund)\b/i.test(m[2]) ? "Income" : "Expense";
-      // the Chq/Ref column ("UPI-630498156262", "IMPS-…", a cheque number) sits between the halves of a wrapped name
-      const ref = (m[2].match(/\s(?:[A-Z]{2,6}-)?\d{6,}\s*$/) || [""])[0];
-      cur = { date: m[1], when: parseDateStr(m[1].replace(/-/g, " ")) || parseDateStr(m[1]), type, amount: amt, raw: ref ? m[2].slice(0, -ref.length) : m[2], checked };
-      rows.push(cur); bal = newBal; continue;
+      if(bal == null && mark) checked = true;                        // first row of a statement without an opening balance
+      // the Chq/Ref/Transaction-id column sits next to the description ("UPI-630498156262", "S8Q024500", "V12740256")
+      let desc = m[2].replace(/\s(?:[A-Z]{2,6}-)?\d{6,}\s*$/, "").replace(/^[A-Z0-9]{6,12}$/, "").trim();
+      let split = false;
+      if(!/[a-z]{3}|[a-z]+\/|\//i.test(desc)){ desc = prev; split = true; }   // Union: the description wraps around the row line (above + below)
+      cur = { date: m[1], when: parseDateStr(m[1].replace(/-/g, " ")) || parseDateStr(m[1]), type, amount: amt, raw: desc, checked, contLeft: split ? 1 : 9 };
+      rows.push(cur); bal = newBal; prev = ""; continue;
     }
-    if(stopRe.test(line)){ cur = null; continue; }                 // footer / next page header: not part of a description
-    if(cur && !/\d{1,3}(,\d{2,3})*\.\d{2}/.test(line) && line.length < 80) cur.raw += " " + line;   // wrapped description
+    if(stopRe.test(line)){ cur = null; prev = ""; continue; }                 // footer / next page header: not part of a description
+    const plain = !/\d{1,3}(,\d{2,3})*\.\d{2}/.test(line) && line.length < 80;
+    if(cur && plain && cur.contLeft > 0){ cur.raw += (/\/$/.test(cur.raw) || /^\//.test(line) ? "" : " ") + line; cur.contLeft--; continue; }   // wrapped description
+    prev = plain ? line : "";
   }
   if(rows.length < 3) return null;
   return rows.map(r => {
@@ -1328,9 +1341,9 @@ function parseBalanceTable(lines){
 // "UPI/G RAMULU/YESB/0255…/Payment from UPI-6304…" → "G Ramulu · UPI";  "Recd:IMPS/6305…/D KARTHIK/KKBK/…" → "D Karthik · IMPS"
 function friendlyDesc(raw){
   const t = String(raw || "").replace(/\s+/g, " ").trim();
-  const via = (t.match(/\b(UPI|IMPS|NEFT|RTGS|ATM|POS|NACH|ECS|CHQ|CHEQUE)\b/i) || [])[1] || "";
+  const via = (t.match(/\b(UPI|IMPS|NEFT|RTGS|ATM|POS|NACH|ECS|CHQ|CHEQUE)(?:AR|AB|IN|OUT)?\b/i) || [])[1] || "";
   const parts = t.split("/").map(x => x.trim()).filter(Boolean);
-  let name = parts.find((x, i) => i > 0 && !/^\d+$/.test(x) && !/^(UPI|IMPS|NEFT|RTGS|[A-Z]{4}|X?\d{3,}.*)$/.test(x) && /[A-Za-z]{2}/.test(x)) || parts[0] || t;
+  let name = parts.find((x, i) => i > 0 && !/^\d+$/.test(x) && !/^(UPI|IMPS|NEFT|RTGS|DR|CR|[A-Z]{4}|X?\d{3,}.*|.*@.*)$/i.test(x) && /[A-Za-z]{2}/.test(x)) || parts[0] || t;
   name = name.replace(/\b(Recd:|Sent:)/i, "").replace(/\s+(UPI|IMPS|NEFT)-\S+.*$/i, "").trim();
   name = name.length > 40 ? name.slice(0, 40) : name;
   return (titleCase(name) + (via ? " · " + via.toUpperCase() : "")).trim() || "Imported transaction";
