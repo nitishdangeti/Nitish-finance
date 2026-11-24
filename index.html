@@ -649,6 +649,40 @@ function barsHtml(){
 }
 function emptyHtml(e, text){ return `<div class="empty"><div class="e">${e}</div>${esc(text)}</div>`; }
 // mode: "time" inside day groups (Activity), "day" for Recent (Today / Yesterday / 21 Nov), "date" for loan history
+// which bank a transaction came from, read from its note ("… · Kotak", "… · Union"), shown as a small coloured badge
+const BANKS = [["Kotak", /\bkotak\b/i, "#ED1C24"], ["Union", /\bunion\b/i, "#3B82F6"], ["SBI", /\b(sbi|state bank)\b/i, "#22A7F0"],
+  ["HDFC", /\bhdfc bank\b/i, "#6366F1"], ["ICICI", /\bicici bank\b/i, "#F59E0B"], ["Axis", /\baxis bank\b/i, "#A855F7"]];
+const IFSC_BANKS = { KKBK: "Kotak", UBIN: "Union", SBIN: "SBI", HDFC: "HDFC", ICIC: "ICICI", UTIB: "Axis" };
+function statementBank(lines){
+  const text = lines.join(" \n ");
+  const ifsc = text.match(/IFSC\s*(?:Code)?\s*[:\-]?\s*([A-Z]{4})0[A-Z0-9]{6}/i);
+  if(ifsc && IFSC_BANKS[ifsc[1].toUpperCase()]) return IFSC_BANKS[ifsc[1].toUpperCase()];
+  if(/kotak mahindra/i.test(text)) return "Kotak";
+  if(/union bank of india/i.test(text)) return "Union";
+  return "";
+}
+// the account holder's name: the line just above "Account No." (Kotak, Union and most banks print it there)
+function statementHolder(lines){
+  for(let i = 1; i < Math.min(lines.length, 400); i++){
+    if(/^account\s*(no|number)\b/i.test(lines[i].trim())){
+      const name = lines[i - 1].replace(/\s+/g, " ").trim();
+      if(/^[A-Za-z][A-Za-z .]{3,40}$/.test(name) && name.split(" ").length >= 2) return name;
+    }
+  }
+  return "";
+}
+// "Dangeti Nitish · UPI" vs holder "DANGETI NITISH" (word order or a cut-off last word allowed)
+function sameName(desc, holder){
+  const words = s => String(s).toLowerCase().replace(/[^a-z ]/g, " ").split(/\s+/).filter(w => w.length > 1);
+  const h = words(holder), d = words(String(desc).split(" · ")[0]);
+  if(h.length < 2 || d.length < 2) return false;
+  return d.every(w => h.some(x => x === w || (x.startsWith(w) && w.length >= 3))) && d.length >= Math.min(2, h.length);
+}
+function bankOf(text){ const b = BANKS.find(([, re]) => re.test(String(text || ""))); return b ? b[0] : ""; }
+function bankBadge(name){
+  const b = BANKS.find(x => x[0] === name); if(!b) return "";
+  return `<span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:7px;font-size:11px;font-weight:600;vertical-align:1px;color:${b[2]};background:${b[2]}22">${esc(b[0])}</span>`;
+}
 function txRow(t, mode){
   const c = catMeta(t.cat, t.type), d = txDate(t), cl = clients.find(x => x.id === t.client_id);
   const when = mode === "date" ? d.toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })
@@ -657,7 +691,7 @@ function txRow(t, mode){
   const inc = t.type === "Income";
   return `<button class="tx" onclick="openTx('${esc(t.id)}')">
     <span class="ico" style="background:${c.color}22">${c.icon}</span>
-    <span class="tx-main"><span class="tx-title">${esc(t.cat)}</span><span class="tx-sub">${esc(sub)}</span></span>
+    <span class="tx-main"><span class="tx-title">${esc(t.cat)}${bankBadge(bankOf(t.note))}</span><span class="tx-sub">${esc(sub)}</span></span>
     <span class="tx-amt ${inc ? "in" : "out"}">${inc ? "+" : "−"}${money(t.amt)}</span></button>`;
 }
 
@@ -1121,7 +1155,7 @@ function exportCSV(){
 // ======================================================
 // IMPORT A STATEMENT (PDF)
 // ======================================================
-let importedRows = [], pendingPdfBuffer = null, pendingPdfName = "";
+let importedRows = [], pendingPdfBuffer = null, pendingPdfName = "", pendingBank = "";
 const REVIEW_ABOVE = 5000;   // statement entries above this wait in To review for you to say what they were
 function renderImport(){
   $("v-import").innerHTML = `
@@ -1205,10 +1239,16 @@ async function loadPdfAndParse(buf, password){
     // otherwise fall back to the older line reader (PhonePe / Google Pay / Paytm style exports)
     const table = parseBalanceTable(all);
     const parsed = table && table.length >= 3 ? table : parseStatementLines(all);
+    // which bank: the IFSC code on the statement (KKBK… = Kotak, UBIN… = Union, …), else the bank's name in the text
+    pendingBank = statementBank(all);
+    // money between your own accounts (the statement holder's own name as payee) is a Self Transfer, not spending/income
+    const holder = statementHolder(all);
+    if(holder) parsed.forEach(r => { if(sameName(r.desc, holder)) { r.cat = "Self Transfer"; r.self = true; } });
+    if(pendingBank) parsed.forEach(r => { if(!new RegExp("\\b" + pendingBank + "\\b", "i").test(r.desc)) r.desc = (r.desc + " · " + pendingBank).trim(); });
     if(!parsed.length){ st.textContent = "Couldn't find transactions in this PDF automatically. You can still add them with the + button."; return; }
     const dupCount = parsed.filter(alreadySaved).length;
     const checkedAll = parsed.every(r => r.checked);
-    st.textContent = `${parsed.length} transaction(s) found` + (checkedAll ? ", every amount checked against the running balance" : "") + "."
+    st.textContent = (pendingBank ? pendingBank + " Bank statement: " : "") + `${parsed.length} transaction(s) found` + (checkedAll ? ", every amount checked against the running balance" : "") + "."
       + (dupCount ? ` ${dupCount} look already saved in your app and are unticked.` : "") + " Untick or fix anything that looks wrong, then import.";
     renderImportPreview(parsed); $("importBtn").classList.remove("hidden");
   }catch(err){
@@ -1340,7 +1380,7 @@ function renderImportPreview(rows){
     <div class="imp">
       <input type="checkbox" id="imp-check-${i}" ${r.dup ? "" : "checked"}>
       <div>
-        <div class="d"><b>${r.when ? esc(r.when.toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })) : "No date found"}</b> · ${esc(r.desc)}${r.dup ? ` <span style="color:var(--amber);font-size:12px">· Already in your app</span>` : ""}${r.amount > REVIEW_ABOVE && hasImportCols ? ` <span style="color:var(--amber);font-size:12px">· goes to To review</span>` : ""}</div>
+        <div class="d"><b>${r.when ? esc(r.when.toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })) : "No date found"}</b>${bankBadge(bankOf(r.desc))} · ${esc(r.desc.replace(/ · (Kotak|Union|SBI|HDFC|ICICI|Axis)$/, ""))}${r.dup ? ` <span style="color:var(--amber);font-size:12px">· Already in your app</span>` : ""}${r.self ? ` <span style="color:var(--muted);font-size:12px">· your own account, not counted</span>` : ""}${r.amount > REVIEW_ABOVE && hasImportCols ? ` <span style="color:var(--amber);font-size:12px">· goes to To review</span>` : ""}</div>
         <div class="r">
           <select class="input" id="imp-type-${i}"><option value="Expense" ${r.type === "Expense" ? "selected" : ""}>Money out</option><option value="Income" ${r.type === "Income" ? "selected" : ""}>Money in</option></select>
           <input class="input" id="imp-amt-${i}" inputmode="decimal" value="${esc(r.amount)}">
@@ -1353,13 +1393,13 @@ async function importSelected(){
   const rows = [];
   // one id for this whole upload: "<file> · <date, time>#<random>", so it can be deleted in one go later
   const stamp = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
-  const batch = `${pendingPdfName || "Statement"} · ${stamp}#${new Date().toISOString()}`;
+  const batch = `${pendingBank ? pendingBank + " · " : ""}${pendingPdfName || "Statement"} · ${stamp}#${new Date().toISOString()}`;
   importedRows.forEach((r, i) => {
     if(!$(`imp-check-${i}`) || !$(`imp-check-${i}`).checked) return;
     const amt = parseFloat($(`imp-amt-${i}`).value.replace(/[^\d.]/g, "")); if(!amt) return;
     const row = { user_id: currentUser.id, type: $(`imp-type-${i}`).value, cat: $(`imp-cat-${i}`).value, note: r.desc || "Imported from statement", amt };
     if(r.when) row.created_at = r.when.toISOString();       // keep the real payment date
-    if(hasImportCols){ row.import_batch = batch; row.needs_review = amt > REVIEW_ABOVE; }
+    if(hasImportCols){ row.import_batch = batch; row.needs_review = amt > REVIEW_ABOVE && row.cat !== NOT_COUNTED; }
     rows.push(row);
   });
   if(!rows.length){ toast("Nothing selected to import"); return; }
