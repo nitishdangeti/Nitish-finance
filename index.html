@@ -227,7 +227,7 @@ svg.i{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke
 .sheet-actions{display:flex;flex-direction:column;gap:10px;margin-top:20px}
 
 /* ---------- toast ---------- */
-.toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 24px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;pointer-events:none;z-index:60;background:#1F2935;border:1px solid var(--line2);color:var(--text);padding:12px 16px;border-radius:14px;font-size:14px;font-weight:500;box-shadow:0 10px 30px rgba(0,0,0,.4);transition:all .22s ease;max-width:calc(100% - 32px)}
+.toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 24px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;pointer-events:none;z-index:60;background:#1F2935;border:1px solid var(--line2);color:var(--text);padding:12px 16px;border-radius:14px;font-size:14px;font-weight:500;box-shadow:0 10px 30px rgba(0,0,0,.4);transition:all .22s ease;width:max-content;max-width:calc(100% - 32px);text-align:center}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .demo-bar{background:var(--amber-soft);color:var(--amber);font-size:12.5px;text-align:center;padding:8px;border-radius:12px;margin-bottom:12px}
 
@@ -359,7 +359,8 @@ function money(v){ const n = Number(v)||0; return "₹" + Math.abs(n).toLocaleSt
 function moneySigned(v){ return (v < 0 ? "−" : "") + money(v); }
 function txDate(t){ return new Date(t.created_at || Date.now()); }
 function inMonth(t, y, m){ const d = txDate(t); return d.getFullYear() === y && d.getMonth() === m; }
-function counted(t){ return t.cat !== NOT_COUNTED; }
+function counted(t){ return t.cat !== NOT_COUNTED && !t.needs_review; }
+function confirmed(t){ return !t.needs_review; }      // big statement entries wait in To review until you confirm them
 function monthName(y, m, short){ return new Date(y, m, 1).toLocaleDateString("en-IN", { month: short ? "short" : "long", year: "numeric" }); }
 function isCurrentMonth(){ const n = new Date(); return month.y === n.getFullYear() && month.m === n.getMonth(); }
 function ymd(d){ return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
@@ -404,7 +405,7 @@ function renderView(v){
 function renderAll(){ renderView(view); updateBadge(); }
 function updateBadge(){
   const b = $("homeBadge"); if(!b) return;
-  const n = typeof inboxItems === "function" ? inboxItems().length : 0;
+  const n = (typeof inboxItems === "function" ? inboxItems().length : 0) + tx.filter(t => t.needs_review).length;
   b.textContent = n; b.classList.toggle("hidden", !n);
 }
 function shiftMonth(n){
@@ -517,7 +518,7 @@ async function loadOwes(){
 }
 // The EMI details (type, monthly EMI, due day) and the link from a payment to its loan need two small
 // database additions (see supabase/loans.sql). Until they are added, loans work with name, total and paid only.
-let hasLoanCols = false, hasDebtLink = false;
+let hasLoanCols = false, hasDebtLink = false, hasImportCols = false;
 // every data load still running, chained; saving from the SMS sheet waits for all of them
 let dataReady = Promise.resolve(), dataSettled = true;
 function trackLoad(p){
@@ -528,10 +529,11 @@ function trackLoad(p){
   return p;
 }
 async function detectSchema(){
-  const [a, b] = await Promise.all([
+  const [a, b, c] = await Promise.all([
     sb.from("debts").select("kind,emi_amount,due_day").limit(1),
-    sb.from("transactions").select("debt_id").limit(1)]);
-  hasLoanCols = !a.error; hasDebtLink = !b.error;
+    sb.from("transactions").select("debt_id").limit(1),
+    sb.from("transactions").select("import_batch,needs_review").limit(1)]);
+  hasLoanCols = !a.error; hasDebtLink = !b.error; hasImportCols = !c.error;
 }
 // inserts/updates that set the transaction date (created_at); retries without it if the database refuses that column
 async function writeTx(op, row, id){
@@ -557,7 +559,7 @@ function renderHome(){
   const bal = inc - out;
   const todayKey = ymd(new Date());
   const spentToday = tx.filter(t => t.type !== "Income" && counted(t) && ymd(txDate(t)) === todayKey).reduce((s,t) => s + Number(t.amt), 0);
-  const recent = tx.slice().sort((a,b) => txDate(b) - txDate(a)).slice(0, 6);
+  const recent = tx.filter(confirmed).sort((a,b) => txDate(b) - txDate(a)).slice(0, 6);
   const pendingTotal = clients.reduce((s,c) => s + Math.max(0, Number(c.total_amount) - clientPaid(c)), 0);
   const pendingCount = clients.filter(c => Number(c.total_amount) - clientPaid(c) > 0).length;
   const oweTotal = owes.reduce((s,o) => s + Math.max(0, Number(o.total_amount) - Number(o.paid_amount)), 0);
@@ -568,6 +570,7 @@ function renderHome(){
       <div style="display:flex;gap:8px;align-items:center">${monthSwitch()}<button class="gear" onclick="go('more')" aria-label="Settings">⚙️</button></div>
     </header>
     ${reviewCardHtml()}
+    ${statementReviewHtml()}
     <div class="home-grid">
       <div>
         <div class="hero">
@@ -662,7 +665,7 @@ function txRow(t, mode){
 // ACTIVITY
 // ======================================================
 function renderActivity(){
-  const cats = [...new Set(tx.filter(t => inMonth(t, month.y, month.m)).map(t => t.cat))];
+  const cats = [...new Set(tx.filter(t => confirmed(t) && inMonth(t, month.y, month.m)).map(t => t.cat))];
   $("v-activity").innerHTML = `
     <header class="top"><div><div class="hello">All transactions</div><h1>Activity</h1></div>${monthSwitch()}</header>
     <div class="search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -674,7 +677,7 @@ function renderActivity(){
 }
 function renderActivityList(){
   const q = filt.q.trim().toLowerCase();
-  const rows = tx.filter(t => inMonth(t, month.y, month.m))
+  const rows = tx.filter(t => confirmed(t) && inMonth(t, month.y, month.m))
     .filter(t => filt.type === "All" || t.type === filt.type)
     .filter(t => !filt.cat || t.cat === filt.cat)
     .filter(t => { if(!q) return true; const cl = clients.find(x => x.id === t.client_id); return [t.note, t.cat, cl && cl.name, String(t.amt)].some(s => String(s || "").toLowerCase().includes(q)); })
@@ -1118,7 +1121,8 @@ function exportCSV(){
 // ======================================================
 // IMPORT A STATEMENT (PDF)
 // ======================================================
-let importedRows = [], pendingPdfBuffer = null;
+let importedRows = [], pendingPdfBuffer = null, pendingPdfName = "";
+const REVIEW_ABOVE = 5000;   // statement entries above this wait in To review for you to say what they were
 function renderImport(){
   $("v-import").innerHTML = `
     <button class="back" onclick="go('more')">‹ Settings</button>
@@ -1131,7 +1135,35 @@ function renderImport(){
     </div>
     <div id="importStatus" class="muted" style="font-size:13.5px;margin:12px 2px"></div>
     <div id="importPreview"></div>
-    <div class="sheet-actions"><button id="importBtn" class="btn btn-primary hidden" onclick="importSelected()">Import selected</button></div>`;
+    <div class="sheet-actions"><button id="importBtn" class="btn btn-primary hidden" onclick="importSelected()">Import selected</button></div>
+    ${hasImportCols ? `<div class="muted" style="font-size:12.5px;margin:10px 2px 0">Entries over ${money(REVIEW_ABOVE)} go to To review on Home, so you can say what they were before they count.</div>` : ""}
+    ${importBatchesHtml()}`;
+}
+// every earlier upload, newest first, each with its own "Delete this upload"
+function importBatchesHtml(){
+  if(!hasImportCols) return `<div class="demo-bar" style="margin-top:18px">To delete a whole upload at once and review big entries, the database needs a one-time update (supabase/statement_review.sql).</div>`;
+  const by = {};
+  tx.forEach(t => { if(t.import_batch) (by[t.import_batch] = by[t.import_batch] || []).push(t); });
+  const list = Object.entries(by).map(([id, rows]) => ({ id, rows, label: id.replace(/#[^#]*$/, "") }));
+  if(!list.length) return "";
+  list.sort((a, b) => b.id.localeCompare(a.id));
+  return `<h3 style="margin:26px 2px 10px;font-size:16px">Your uploads</h3>` + list.map(b => {
+    const out = b.rows.filter(r => r.type !== "Income").reduce((s, r) => s + Number(r.amt), 0);
+    const inc = b.rows.filter(r => r.type === "Income").reduce((s, r) => s + Number(r.amt), 0);
+    const waiting = b.rows.filter(r => r.needs_review).length;
+    return `<div class="card" style="margin-bottom:10px">
+      <div style="font-weight:600">${esc(b.label)}</div>
+      <div class="muted" style="font-size:13px;margin:3px 0 10px">${b.rows.length} transaction${b.rows.length > 1 ? "s" : ""} · ${money(out)} out · ${money(inc)} in${waiting ? ` · ${waiting} to confirm` : ""}</div>
+      <button class="btn btn-danger btn-sm" onclick="armThen(this, () => deleteImportBatch(${esc(JSON.stringify(b.id))}))">Delete this upload</button>
+    </div>`;
+  }).join("");
+}
+async function deleteImportBatch(id){
+  const n = tx.filter(t => t.import_batch === id).length;
+  const { error } = await sb.from("transactions").delete().eq("import_batch", id);
+  if(error){ toast("Couldn't delete: " + error.message); return; }
+  tx = tx.filter(t => t.import_batch !== id);
+  renderAll(); toast(`Deleted ${n} transaction${n > 1 ? "s" : ""} from that upload`);
 }
 function loadPdfJs(){
   if(window.pdfjsLib) return Promise.resolve();
@@ -1152,7 +1184,7 @@ async function handlePdfUpload(event){
   $("pdfPasswordFields").classList.add("hidden");
   $("importStatus").textContent = "Reading PDF…";
   $("importBtn").classList.add("hidden"); $("importPreview").innerHTML = "";
-  pendingPdfBuffer = await file.arrayBuffer();
+  pendingPdfBuffer = await file.arrayBuffer(); pendingPdfName = file.name || "Statement";
   await loadPdfAndParse(pendingPdfBuffer, null);
 }
 async function retryPdfWithPassword(){
@@ -1251,19 +1283,24 @@ function renderImportPreview(rows){
 }
 async function importSelected(){
   const rows = [];
+  // one id for this whole upload: "<file> · <date, time>#<random>", so it can be deleted in one go later
+  const stamp = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+  const batch = `${pendingPdfName || "Statement"} · ${stamp}#${new Date().toISOString()}`;
   importedRows.forEach((r, i) => {
     if(!$(`imp-check-${i}`) || !$(`imp-check-${i}`).checked) return;
     const amt = parseFloat($(`imp-amt-${i}`).value.replace(/[^\d.]/g, "")); if(!amt) return;
     const row = { user_id: currentUser.id, type: $(`imp-type-${i}`).value, cat: $(`imp-cat-${i}`).value, note: r.desc || "Imported from statement", amt };
     if(r.when) row.created_at = r.when.toISOString();       // keep the real payment date
+    if(hasImportCols){ row.import_batch = batch; row.needs_review = amt > REVIEW_ABOVE; }
     rows.push(row);
   });
   if(!rows.length){ toast("Nothing selected to import"); return; }
   const { data, error } = await writeTx("insert", rows);
   if(error){ toast("Import failed: " + error.message); return; }
   tx.push(...data); importedRows = [];
-  toast(`${data.length} transaction(s) imported`);
-  go("activity");
+  const held = data.filter(t => t.needs_review).length;
+  toast(`${data.length} transaction(s) imported` + (held ? ` · ${held} over ${money(REVIEW_ABOVE)} waiting in To review` : ""));
+  go(held ? "home" : "activity"); updateBadge();
 }
 
 // ======================================================
@@ -1348,6 +1385,72 @@ async function removeInbox(ids, ref){
 }
 function inboxIdsFor(ref, id){ return inbox.filter(i => i.id === id || (ref && i.ref === ref)).map(i => i.id); }
 
+function statementReviewHtml(){
+  const items = tx.filter(t => t.needs_review).sort((a, b) => txDate(b) - txDate(a));
+  if(!items.length) return "";
+  const out = items.filter(t => t.type !== "Income").reduce((s, t) => s + Number(t.amt), 0);
+  const inc = items.filter(t => t.type === "Income").reduce((s, t) => s + Number(t.amt), 0);
+  return `<div class="card review">
+    <div class="card-h"><h3>🧾 ${items.length} statement entr${items.length > 1 ? "ies" : "y"} to confirm</h3></div>
+    <div class="muted" style="font-size:13px;margin:-6px 2px 4px">${[out ? money(out) + " out" : "", inc ? money(inc) + " in" : ""].filter(Boolean).join(" · ")}, over ${money(REVIEW_ABOVE)} each from your uploaded statement. Not counted until you confirm.</div>
+    ${items.map(t => { const c = catMeta(t.cat, t.type), isIn = t.type === "Income"; return `<div class="rv">
+      <button class="rv-main" onclick="openStmtReview('${esc(t.id)}')">
+        <span class="ico" style="background:${c.color}22">${c.icon}</span>
+        <span class="tx-main"><span class="tx-title"><span class="${isIn ? "paid" : ""}">${isIn ? "+" : "−"}${money(t.amt)}</span> · ${esc(t.note || "Statement entry")}</span>
+          <span class="tx-sub">${esc(t.cat)} · ${esc(dayLabel(txDate(t)))}</span></span>
+      </button></div>`; }).join("")}
+  </div>`;
+}
+let stmtForm = null;
+function openStmtReview(id){
+  const t = tx.find(x => x.id === id); if(!t) return;
+  stmtForm = { id, type: t.type, saving: false };
+  const isIn = t.type === "Income", list = isIn ? IN_CATS : OUT_CATS;
+  openSheet(`
+    <div class="sheet-h"><h2>What was this for?</h2><button class="x" onclick="closeSheet()" aria-label="Close">✕</button></div>
+    <div class="muted" style="font-size:13px">From your statement · ${esc(dayLabel(txDate(t)))}</div>
+    <div class="amount" style="border-bottom:0;padding-bottom:0"><span>₹</span><input id="stAmt" type="text" inputmode="decimal" value="${esc(t.amt)}" style="color:${isIn ? "var(--green)" : "var(--text)"}"></div>
+    <div class="seg" id="stSeg" style="margin-top:10px"></div>
+    <label class="field"><span>Statement text</span><input class="input" id="stNote" value="${esc(t.note || "")}" autocomplete="off"></label>
+    <label class="field"><span>Why was it used? (optional)</span><input class="input" id="stWhy" placeholder="e.g. rent for November" autocomplete="off"></label>
+    <div class="field"><span>Tap a category to confirm</span><div class="cats" id="stCats"></div></div>
+    <div class="sheet-actions">
+      <button class="btn btn-soft" onclick="closeSheet()">Decide later</button>
+      <button class="btn btn-danger" onclick="armThen(this, () => removeStmtEntry())">Remove, not a real transaction</button></div>`);
+  paintStmtType(); paintStmtCats(t.cat);
+}
+function setStmtType(k){ if(stmtForm.type === k) return; stmtForm.type = k; paintStmtType(); paintStmtCats(""); }
+function paintStmtType(){
+  $("stSeg").innerHTML = ["Expense","Income"].map(k => `<button class="${stmtForm.type === k ? "on " + (k === "Expense" ? "out" : "in") : ""}" onclick="setStmtType('${k}')">${k === "Expense" ? "Money out" : "Money in"}</button>`).join("");
+}
+function paintStmtCats(current){
+  const list = stmtForm.type === "Income" ? IN_CATS : OUT_CATS;
+  $("stCats").innerHTML = list.map(([n, ic]) => `<button class="cat ${n === current ? "on" : ""}" onclick="confirmStmt(${esc(JSON.stringify(n))})"><span class="em">${ic}</span>${esc(n)}${n === current ? `<small style="color:var(--green);font-size:10px">guessed</small>` : ""}</button>`).join("");
+}
+async function confirmStmt(cat){
+  const f = stmtForm; if(!f || f.saving) return;
+  const amt = num($("stAmt").value); if(!amt){ toast("Enter an amount"); return; }
+  const note = [$("stNote").value.trim(), $("stWhy").value.trim()].filter(Boolean).join(" · ") || "Imported from statement";
+  f.saving = true;
+  try{
+    const { data, error } = await sb.from("transactions").update({ cat, type: f.type, amt, note, needs_review: false }).eq("id", f.id).select();
+    if(error){ toast("Couldn't save: " + error.message); return; }
+    const i = tx.findIndex(x => x.id === f.id); if(i >= 0 && data && data[0]) tx[i] = data[0];
+    if(stmtForm === f) closeSheet();
+    renderAll(); toast(`Confirmed ${money(amt)} · ${cat}`);
+  } finally { f.saving = false; }
+}
+async function removeStmtEntry(){
+  const f = stmtForm; if(!f || f.saving) return;
+  f.saving = true;
+  try{
+    const { error } = await sb.from("transactions").delete().eq("id", f.id);
+    if(error){ toast("Couldn't remove: " + error.message); return; }
+    tx = tx.filter(x => x.id !== f.id);
+    if(stmtForm === f) closeSheet();
+    renderAll(); toast("Removed");
+  } finally { f.saving = false; }
+}
 function reviewCardHtml(){
   const items = inboxItems();
   if(!items.length) return "";
