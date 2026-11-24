@@ -1459,20 +1459,22 @@ function statementReviewHtml(){
   const out = items.filter(t => t.type !== "Income").reduce((s, t) => s + Number(t.amt), 0);
   const inc = items.filter(t => t.type === "Income").reduce((s, t) => s + Number(t.amt), 0);
   return `<div class="card review">
-    <div class="card-h"><h3>🧾 ${items.length} statement entr${items.length > 1 ? "ies" : "y"} to confirm</h3></div>
+    <div class="card-h"><h3>🧾 ${items.length} statement entr${items.length > 1 ? "ies" : "y"} to confirm</h3>
+      ${items.length > 1 ? `<button class="link" onclick="acceptAllStmt()">Accept all</button>` : ""}</div>
     <div class="muted" style="font-size:13px;margin:-6px 2px 4px">${[out ? money(out) + " out" : "", inc ? money(inc) + " in" : ""].filter(Boolean).join(" · ")}, over ${money(REVIEW_ABOVE)} each from your uploaded statement. Not counted until you confirm.</div>
     ${items.map(t => { const c = catMeta(t.cat, t.type), isIn = t.type === "Income"; return `<div class="rv">
       <button class="rv-main" onclick="openStmtReview('${esc(t.id)}')">
         <span class="ico" style="background:${c.color}22">${c.icon}</span>
         <span class="tx-main"><span class="tx-title"><span class="${isIn ? "paid" : ""}">${isIn ? "+" : "−"}${money(t.amt)}</span> · ${esc(t.note || "Statement entry")}</span>
           <span class="tx-sub">${esc(t.cat)} · ${esc(dayLabel(txDate(t)))}</span></span>
-      </button></div>`; }).join("")}
+      </button>
+      <button class="rv-ok" onclick="acceptStmt('${esc(t.id)}')" aria-label="Accept">✓</button></div>`; }).join("")}
   </div>`;
 }
 let stmtForm = null;
 function openStmtReview(id){
   const t = tx.find(x => x.id === id); if(!t) return;
-  stmtForm = { id, type: t.type, saving: false };
+  stmtForm = { id, type: t.type, cat: t.cat, saving: false };
   const isIn = t.type === "Income", list = isIn ? IN_CATS : OUT_CATS;
   openSheet(`
     <div class="sheet-h"><h2>What was this for?</h2><button class="x" onclick="closeSheet()" aria-label="Close">✕</button></div>
@@ -1481,19 +1483,26 @@ function openStmtReview(id){
     <div class="seg" id="stSeg" style="margin-top:10px"></div>
     <label class="field"><span>Statement text</span><input class="input" id="stNote" value="${esc(t.note || "")}" autocomplete="off"></label>
     <label class="field"><span>Why was it used? (optional)</span><input class="input" id="stWhy" placeholder="e.g. rent for November" autocomplete="off"></label>
-    <div class="field"><span>Tap a category to confirm</span><div class="cats" id="stCats"></div></div>
-    <div class="sheet-actions">
-      <button class="btn btn-soft" onclick="closeSheet()">Decide later</button>
-      <button class="btn btn-danger" onclick="armThen(this, () => removeStmtEntry())">Remove, not a real transaction</button></div>`);
+    <div class="field"><span>Category (tap to change)</span><div class="cats" id="stCats"></div></div>
+    <div style="position:sticky;bottom:calc(-18px - env(safe-area-inset-bottom));margin:16px -18px calc(-18px - env(safe-area-inset-bottom));padding:12px 18px calc(18px + env(safe-area-inset-bottom));background:var(--surface);border-top:1px solid var(--line);z-index:2">
+      <button class="btn btn-primary" style="width:100%" onclick="confirmStmt(stmtForm.cat)">✓ Accept</button>
+      <div style="display:flex;gap:10px;margin-top:10px">
+        <button class="btn btn-soft btn-sm" style="flex:1" onclick="closeSheet()">Decide later</button>
+        <button class="btn btn-danger btn-sm" style="flex:1" onclick="armThen(this, () => removeStmtEntry())">Remove</button></div></div>`);
   paintStmtType(); paintStmtCats(t.cat);
 }
-function setStmtType(k){ if(stmtForm.type === k) return; stmtForm.type = k; paintStmtType(); paintStmtCats(""); }
+function setStmtType(k){
+  if(stmtForm.type === k) return;
+  stmtForm.type = k; stmtForm.cat = "Other";
+  paintStmtType(); paintStmtCats(stmtForm.cat);
+}
+function pickStmtCat(cat){ stmtForm.cat = cat; paintStmtCats(cat); }
 function paintStmtType(){
   $("stSeg").innerHTML = ["Expense","Income"].map(k => `<button class="${stmtForm.type === k ? "on " + (k === "Expense" ? "out" : "in") : ""}" onclick="setStmtType('${k}')">${k === "Expense" ? "Money out" : "Money in"}</button>`).join("");
 }
 function paintStmtCats(current){
   const list = stmtForm.type === "Income" ? IN_CATS : OUT_CATS;
-  $("stCats").innerHTML = list.map(([n, ic]) => `<button class="cat ${n === current ? "on" : ""}" onclick="confirmStmt(${esc(JSON.stringify(n))})"><span class="em">${ic}</span>${esc(n)}${n === current ? `<small style="color:var(--green);font-size:10px">guessed</small>` : ""}</button>`).join("");
+  $("stCats").innerHTML = list.map(([n, ic]) => `<button class="cat ${n === current ? "on" : ""}" onclick="pickStmtCat(${esc(JSON.stringify(n))})"><span class="em">${ic}</span>${esc(n)}</button>`).join("");
 }
 async function confirmStmt(cat){
   const f = stmtForm; if(!f || f.saving) return;
@@ -1505,8 +1514,31 @@ async function confirmStmt(cat){
     if(error){ toast("Couldn't save: " + error.message); return; }
     const i = tx.findIndex(x => x.id === f.id); if(i >= 0 && data && data[0]) tx[i] = data[0];
     if(stmtForm === f) closeSheet();
-    renderAll(); toast(`Confirmed ${money(amt)} · ${cat}`);
+    renderAll(); toast(`Accepted ${money(amt)} · ${cat}`);
   } finally { f.saving = false; }
+}
+const acceptingStmt = new Set();
+async function acceptStmt(id, quiet){
+  if(acceptingStmt.has(id)) return false;
+  const t = tx.find(x => x.id === id); if(!t || !t.needs_review) return false;
+  acceptingStmt.add(id);
+  try{
+    const { data, error } = await sb.from("transactions").update({ needs_review: false }).eq("id", id).select();
+    if(error){ toast("Couldn't accept: " + error.message); return false; }
+    const i = tx.findIndex(x => x.id === id); if(i >= 0) tx[i] = (data && data[0]) || { ...t, needs_review: false };
+    if(!quiet){ renderAll(); toast(`Accepted ${money(t.amt)} · ${t.cat}`); }
+    return true;
+  } finally { acceptingStmt.delete(id); }
+}
+let acceptingAllStmt = false;
+async function acceptAllStmt(){
+  if(acceptingAllStmt) return;
+  acceptingAllStmt = true;
+  try{
+    let n = 0;
+    for(const t of tx.filter(x => x.needs_review)) if(await acceptStmt(t.id, true)) n++;
+    renderAll(); toast(`${n} accepted`);
+  } finally { acceptingAllStmt = false; }
 }
 async function removeStmtEntry(){
   const f = stmtForm; if(!f || f.saving) return;
