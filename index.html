@@ -13,7 +13,10 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://ceboyaukuxvfymiedpwj.supabase.co" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<!-- exact version: the browser can keep it cached for a year instead of re-checking "@2" -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.2"></script>
 <style>
 :root{
   --bg:#0B0F14; --surface:#121821; --surface2:#18202B; --line:#222C38; --line2:#2C3846;
@@ -462,14 +465,20 @@ async function onLoggedIn(user){
   // a link ending in #activity, #clients, #debts, #more or #import opens that screen; #add opens the add sheet
   const h = location.hash.slice(1);
   go(["activity","clients","loans","more","import"].includes(h) ? h : "home");
-  await Promise.all([loadClients(), loadOwes(), loadTx(), detectSchema(), loadInbox()]);
-  renderAll();
-  if(h === "add") openTx();
+  const loading = trackLoad(Promise.all([loadClients(), loadOwes(), loadTx(), detectSchema(), loadInbox()]));
+  // a bank SMS link: show the payment sheet straight away; your data loads behind it
   if(h.startsWith("sms=")) openSmsFromHash();
+  await loading;
+  renderAll();
+  if(h === "add" && $("sheetWrap").classList.contains("hidden")) openTx();
+  refreshSmsSheet();      // an open SMS sheet: link it to its To review copy, duplicate warning, client
 }
+let sessionGen = 0;   // bumped at logout: loads that started before it are ignored
 async function logout(){
+  sessionGen++;
   await sb.auth.signOut();
   currentUser = null; tx = []; clients = []; owes = [];
+  inbox = []; hasInbox = false; inboxLoadedAt = 0; smsForm = null; removedAt.clear(); savedInbox.clear(); busyInbox.clear();   // the next login must not show this To review
   $("appScreen").classList.add("hidden"); $("authScreen").classList.remove("hidden");
   $("authEmail").value = ""; $("authPass").value = ""; closeSheet();
 }
@@ -486,23 +495,38 @@ async function logout(){
 
 // ---------- data ----------
 async function loadTx(){
+  const gen = sessionGen;
   const { data, error } = await sb.from("transactions").select("*").order("created_at", { ascending: true });
+  if(gen !== sessionGen) return;                 // logged out meanwhile
   if(error){ toast("Couldn't load transactions"); console.error(error); return; }
   tx = data || [];
 }
 async function loadClients(){
+  const gen = sessionGen;
   const { data, error } = await sb.from("clients").select("*").order("created_at", { ascending: true });
+  if(gen !== sessionGen) return;                 // logged out meanwhile
   if(error){ console.error(error); return; }
   clients = data || [];
 }
 async function loadOwes(){
+  const gen = sessionGen;
   const { data, error } = await sb.from("debts").select("*").order("created_at", { ascending: true });
+  if(gen !== sessionGen) return;                 // logged out meanwhile
   if(error){ console.error(error); return; }
   owes = data || [];
 }
 // The EMI details (type, monthly EMI, due day) and the link from a payment to its loan need two small
 // database additions (see supabase/loans.sql). Until they are added, loans work with name, total and paid only.
 let hasLoanCols = false, hasDebtLink = false;
+// every data load still running, chained; saving from the SMS sheet waits for all of them
+let dataReady = Promise.resolve(), dataSettled = true;
+function trackLoad(p){
+  const all = Promise.all([dataReady, p]).catch(() => {});   // a short inbox reload never cuts the full first load short
+  dataReady = all; dataSettled = false;
+  // once everything is in, repaint an open SMS sheet (client, duplicate warning, To review link), however it was opened
+  all.then(() => { if(dataReady === all){ dataSettled = true; refreshSmsSheet(); } });
+  return p;
+}
 async function detectSchema(){
   const [a, b] = await Promise.all([
     sb.from("debts").select("kind,emi_amount,due_day").limit(1),
@@ -1288,24 +1312,39 @@ function suggestCat(p){
 
 // ---------- inbox (needs supabase/sms_inbox.sql) ----------
 let inbox = [], hasInbox = false, inboxLoadedAt = 0;
+// when this page removed an inbox row (by id, and by "ref:<ref>"): a load that STARTED before that removal
+// finished may still contain the row, so it is dropped from that load only (a later SMS with the same ref still shows)
+const removedAt = new Map();
 async function loadInbox(){
+  const started = Date.now(), gen = sessionGen;
   const { data, error } = await sb.from("sms_inbox").select("*").order("received_at", { ascending: true });
-  hasInbox = !error; inbox = error ? [] : (data || []); inboxLoadedAt = Date.now();
+  if(gen !== sessionGen) return;                 // logged out meanwhile
+  hasInbox = !error;
+  const stale = i => (removedAt.get(i.id) || 0) >= started || (!!i.ref && (removedAt.get("ref:" + i.ref) || 0) >= started);
+  inbox = (error ? [] : (data || [])).filter(i => !stale(i));
+  inboxLoadedAt = Date.now();
 }
 // coming back to the app (e.g. after a payment): pick up SMS that arrived while it was in the background
 document.addEventListener("visibilitychange", async () => {
   if(document.visibilityState !== "visible" || !currentUser || Date.now() - inboxLoadedAt < 15e3) return;
-  await loadInbox(); renderAll();
+  await trackLoad(loadInbox()); renderAll(); refreshSmsSheet();
 });
 function inboxItems(){
   return inbox.map(i => ({ i, p: parseBankSms(i.sms), when: new Date(i.received_at) })).filter(x => x.p.amount > 0 && x.p.type);
 }
+// returns false if any delete failed (e.g. no network): those rows stay in To review and are not marked as removed
 async function removeInbox(ids, ref){
   ids = ids.filter(Boolean);
-  for(const id of ids) await sb.from("sms_inbox").delete().eq("id", id);
+  const done = []; let ok = true, refDone = false;
+  for(const id of ids){ const { error } = await sb.from("sms_inbox").delete().eq("id", id); if(error) ok = false; else done.push(id); }
   // also any copy of the same SMS (same bank ref) that reached the inbox after this page loaded it
-  if(ref) await sb.from("sms_inbox").delete().eq("ref", ref);
-  inbox = inbox.filter(i => !ids.includes(i.id) && !(ref && i.ref === ref));
+  if(ref){ const { error } = await sb.from("sms_inbox").delete().eq("ref", ref); if(error) ok = false; else refDone = true; }
+  const now = Date.now();
+  done.forEach(id => removedAt.set(id, now)); if(refDone) removedAt.set("ref:" + ref, now);
+  inbox = inbox.filter(i => !done.includes(i.id) && !(refDone && i.ref === ref));
+  if(refDone) return true;                       // every copy of this SMS is gone
+  if(!ids.length) return !ref;                   // nothing to remove by id; only the ref delete could have failed
+  return ids.every(id => done.includes(id));
 }
 function inboxIdsFor(ref, id){ return inbox.filter(i => i.id === id || (ref && i.ref === ref)).map(i => i.id); }
 
@@ -1333,27 +1372,56 @@ function reviewRow({ i, p, when }){
   </div>`;
 }
 function needsChoice(p){ return suggestCat(p) === "EMI/Debt" && owes.some(o => loanLeft(o) > 0); }
+const approving = new Set();   // inbox ids being approved right now: a second tap must not save them twice
+let approvingAll = false;
 async function approveInbox(id, quiet){
-  const x = inboxItems().find(y => y.i.id === id); if(!x) return false;
-  if(needsChoice(x.p)){ reviewInbox(id); return false; }               // an EMI needs you to pick the loan
-  const cat = suggestCat(x.p), cl = matchClient(x.p), isIn = x.p.type === "Income";
-  const row = { user_id: currentUser.id, type: x.p.type, cat, amt: x.p.amount,
-                note: [titleCase(x.p.party), x.p.account].filter(Boolean).join(" · ") || "From bank SMS",
-                client_id: isIn && cl ? cl.id : null, payment_type: isIn ? "Full" : null, created_at: x.when.toISOString() };
-  const r = await writeTx("insert", row);
-  if(r.error){ toast("Couldn't save: " + r.error.message); return false; }
-  tx.push(r.data[0]); await removeInbox([id]);
-  if(!quiet){ renderAll(); toast(`Approved ${money(x.p.amount)} · ${cat}`); }
-  return true;
+  if(approving.has(id)) return false;
+  approving.add(id);
+  try{
+    if(!dataSettled) await dataReady;                                      // clients and loans are needed to approve correctly
+    const x = inboxItems().find(y => y.i.id === id); if(!x) return false;
+    if(needsChoice(x.p)){                                                  // an EMI needs you to pick the loan
+      if($("sheetWrap").classList.contains("hidden")) reviewInbox(id);     // never cover a sheet opened while waiting
+      else if(!quiet) toast("This EMI needs a loan: tap it in To review to choose");
+      return false;
+    }
+    const g = { inboxId: id, p: x.p };
+    if(inboxKeys(g).some(k => savedInbox.has(k))){                        // already saved earlier, only the delete failed
+      const removed = await removeInbox([id], x.i.ref); renderAll();
+      if(!quiet) toast(removed ? "Removed from To review (it was already saved)" : "Still couldn't remove it, check your connection");
+      return false;
+    }
+    return await withInboxBusy(g, async () => {
+      const cat = suggestCat(x.p), cl = matchClient(x.p), isIn = x.p.type === "Income";
+      const row = { user_id: currentUser.id, type: x.p.type, cat, amt: x.p.amount,
+                    note: [titleCase(x.p.party), x.p.account].filter(Boolean).join(" · ") || "From bank SMS",
+                    client_id: isIn && cl ? cl.id : null, payment_type: isIn ? "Full" : null, created_at: x.when.toISOString() };
+      const r = await writeTx("insert", row);
+      if(r.error){ toast("Couldn't save: " + r.error.message); return false; }
+      tx.push(r.data[0]); markSaved(g);
+      const removed = await removeInbox([id], x.i.ref);
+      if(!removed) partialApprove++;
+      afterSmsSaved(g);
+      if(!quiet) toast(removed ? `Approved ${money(x.p.amount)} · ${cat}` : `Approved ${money(x.p.amount)}, but it's still in To review: remove it there`);
+      return true;
+    }, quiet);
+  } finally { approving.delete(id); }
 }
 async function approveAll(){
-  let n = 0, skipped = 0;
+  if(approvingAll) return;
+  approvingAll = true;
+  try{ if(!dataSettled) await dataReady; await approveAllNow(); } finally { approvingAll = false; }
+}
+let partialApprove = 0;
+async function approveAllNow(){
+  let n = 0, skipped = 0; partialApprove = 0;
   for(const x of inboxItems()){
     if(needsChoice(x.p)){ skipped++; continue; }
     if(await approveInbox(x.i.id, true)) n++;
   }
   renderAll();
-  toast(`${n} approved` + (skipped ? ` · ${skipped} EMI${skipped > 1 ? "s" : ""} left to match with a loan` : ""));
+  toast(`${n} approved` + (skipped ? ` · ${skipped} EMI${skipped > 1 ? "s" : ""} left to match with a loan` : "")
+        + (partialApprove ? ` · ${partialApprove} still in To review (no connection), tap ✓ to clear` : ""));
 }
 function reviewInbox(id){
   const x = inboxItems().find(y => y.i.id === id); if(!x) return;
@@ -1374,16 +1442,15 @@ function openSmsFromHash(){
 }
 window.addEventListener("hashchange", async () => {
   if(!currentUser || !location.hash.startsWith("#sms=")) return;
-  await loadInbox(); renderAll();          // the page may have been open for a while: get the SMS the automation just added
-  openSmsFromHash();
+  openSmsFromHash();                         // show it at once...
+  await trackLoad(loadInbox());              // ...then fetch the SMS the automation just added (the page may have been open a while)
+  renderAll(); refreshSmsSheet();
 });
 
 function openSmsSheet(p, opts){
   opts = opts || {};
   const party = titleCase(p.party), isIn = p.type === "Income", client = matchClient(p);
   const when = opts.when || new Date();
-  // probably already saved: same amount and direction within 2 hours of this SMS
-  const dup = tx.find(t => t.type === p.type && Math.abs(Number(t.amt) - p.amount) < 0.01 && Math.abs(txDate(t) - when) < 2 * 3600e3);
   smsForm = { p, party, client: client ? client.id : "", pay: "Full", guess: suggestCat(p), inboxId: opts.inboxId || null, when };
   const bank = p.account ? p.account + " Bank" : "your bank";
   const ago = Date.now() - when < 120e3 ? "just now" : dayLabel(when) + ", " + timeLabel(when);
@@ -1392,18 +1459,36 @@ function openSmsSheet(p, opts){
     <div class="muted" style="font-size:13px">From ${esc(bank)} SMS · ${esc(ago)}</div>
     <div class="amount" style="border-bottom:0;padding-bottom:0"><span>₹</span><input id="sAmt" type="text" inputmode="decimal" value="${esc(p.amount)}" style="color:${isIn ? "var(--green)" : "var(--text)"}"></div>
     <div style="font-size:15px;margin:2px 2px 0">${isIn ? "from" : "to"} <b>${esc(party || "someone")}</b></div>
-    ${dup ? `<div class="demo-bar" style="margin:12px 0 0">You already saved ${money(p.amount)} ${isIn ? "money in" : "money out"} around this time. If it's the same payment, remove this one below.</div>` : ""}
+    <div id="sDup"></div>
     <label class="field"><span>What was it for? (optional)</span><input class="input" id="sNote" placeholder="e.g. lunch with team" autocomplete="off"></label>
-    ${isIn && clients.length ? `<div class="row2">
-      <label class="field"><span>Client</span><select class="input" id="sClient" onchange="smsForm.client=this.value"><option value="">No client</option>${clients.map(c => `<option value="${esc(c.id)}" ${smsForm.client === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
-      <label class="field"><span>Payment</span><select class="input" id="sPay" onchange="smsForm.pay=this.value">${PAY_TYPES.map(x => `<option ${x === "Full" ? "selected" : ""}>${x}</option>`).join("")}</select></label>
-    </div>` : ""}
+    <div id="sClientRow"></div>
     <div class="field"><span>Tap a category to save</span><div class="cats" id="sCats"></div></div>
     <div id="sLoans"></div>
-    ${opts.inboxId ? `<div class="sheet-actions">
+    <div id="sActs"></div>`);
+  paintSmsExtras(); paintSmsCats();
+}
+// the parts of the sheet that depend on your saved data; painted again once it has loaded
+function paintSmsExtras(){
+  const f = smsForm, p = f.p, isIn = p.type === "Income";
+  // probably already saved: same amount and direction within 2 hours of this SMS
+  const dup = tx.find(t => t.type === p.type && Math.abs(Number(t.amt) - p.amount) < 0.01 && Math.abs(txDate(t) - f.when) < 2 * 3600e3);
+  $("sDup").innerHTML = dup ? `<div class="demo-bar" style="margin:12px 0 0">You already saved ${money(p.amount)} ${isIn ? "money in" : "money out"} around this time. If it's the same payment, remove this one below.</div>` : "";
+  $("sClientRow").innerHTML = isIn && clients.length ? `<div class="row2">
+      <label class="field"><span>Client</span><select class="input" id="sClient" onchange="smsForm.client=this.value; smsForm.clientTouched=true"><option value="">No client</option>${clients.map(c => `<option value="${esc(c.id)}" ${f.client === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
+      <label class="field"><span>Payment</span><select class="input" id="sPay" onchange="smsForm.pay=this.value">${PAY_TYPES.map(x => `<option ${x === f.pay ? "selected" : ""}>${x}</option>`).join("")}</select></label>
+    </div>` : "";
+  $("sActs").innerHTML = f.inboxId ? `<div class="sheet-actions">
       <button class="btn btn-soft" onclick="closeSheet()">Decide later</button>
-      <button class="btn btn-danger" onclick="armThen(this, () => dismissSms())">Remove, not a real payment</button></div>` : ""}`);
-  paintSmsCats();
+      <button class="btn btn-danger" onclick="armThen(this, () => dismissSms())">Remove, not a real payment</button></div>` : "";
+}
+function refreshSmsSheet(){
+  const f = smsForm;
+  if(!f || f.saving || $("sheetWrap").classList.contains("hidden") || !$("sCats")) return;   // closed, saving, or another sheet is open
+  const queued = inbox.find(i => f.p.ref && i.ref === f.p.ref);          // the automation's To review copy of this SMS
+  if(queued && !f.inboxId){ f.inboxId = queued.id; f.when = new Date(queued.received_at); }
+  if(!f.clientTouched){ const cl = matchClient(f.p); if(cl && !f.client) f.client = cl.id; }   // never undo the user's own choice
+  f.guess = suggestCat(f.p);
+  paintSmsExtras(); paintSmsCats();
 }
 function paintSmsCats(){
   const f = smsForm, list = f.p.type === "Income" ? IN_CATS : OUT_CATS;
@@ -1417,38 +1502,106 @@ function smsNote(){
 async function pickSmsCat(cat){
   const f = smsForm, amt = num($("sAmt").value);
   if(!amt){ toast("Enter an amount"); return; }
-  const open = owes.filter(o => loanLeft(o) > 0);
-  if(cat === "EMI/Debt" && f.p.type !== "Income" && open.length){       // which loan was this?
-    $("sLoans").innerHTML = `<div class="field"><span>Which loan did you pay?</span><div class="chips" style="flex-wrap:wrap">
-      ${open.map(o => `<button class="chip" onclick="saveSmsLoan('${esc(o.id)}')">${loanKind(o)[1]} ${esc(o.name)}${hasLoanCols && o.emi_amount ? " · " + money(o.emi_amount) : ""}</button>`).join("")}
-      <button class="chip" onclick="saveSms('EMI/Debt')">Not one of these</button></div></div>`;
-    $("sLoans").scrollIntoView({ behavior: "smooth", block: "end" });
-    return;
-  }
-  await saveSms(cat);
+  if(f.saving) return;                     // a second tap while the first is still saving
+  if(smsAlreadyHandled(f)){ toast("Already saved"); if(smsForm === f) closeSheet(); return; }
+  f.saving = true;
+  try{
+    if(!dataSettled){
+      // the sheet opened before your data loaded: wait, so the To review copy, loans, clients and duplicates are known
+      $("sCats").style.opacity = ".55";
+      await dataReady;
+      if(smsForm !== f || $("sheetWrap").classList.contains("hidden") || !$("sCats")) return;   // closed or replaced meanwhile
+      $("sCats").style.opacity = "";
+      const had = { dup: !!$("sDup").innerHTML, client: !!$("sClientRow").innerHTML };
+      f.saving = false; refreshSmsSheet(); f.saving = true;
+      // something you had not seen yet appeared (a duplicate warning, or the client choice): look first, then tap again
+      if((!had.dup && $("sDup").innerHTML) || (!had.client && $("sClientRow").innerHTML)){
+        toast("Check the details, then tap the category again"); return;
+      }
+    }
+    const open = owes.filter(o => loanLeft(o) > 0);
+    if(cat === "EMI/Debt" && f.p.type !== "Income" && open.length){       // which loan was this?
+      $("sLoans").innerHTML = `<div class="field"><span>Which loan did you pay?</span><div class="chips" style="flex-wrap:wrap">
+        ${open.map(o => `<button class="chip" onclick="saveSmsLoan('${esc(o.id)}')">${loanKind(o)[1]} ${esc(o.name)}${hasLoanCols && o.emi_amount ? " · " + money(o.emi_amount) : ""}</button>`).join("")}
+        <button class="chip" onclick="saveSmsNone()">Not one of these</button></div></div>`;
+      $("sLoans").scrollIntoView({ behavior: "smooth", block: "end" });
+      return;
+    }
+    await saveSms(cat, f, amt);
+  } finally { f.saving = false; if(smsForm === f && $("sCats")) $("sCats").style.opacity = ""; }
 }
-async function saveSms(cat){
-  const f = smsForm, amt = num($("sAmt").value), isIn = f.p.type === "Income";
+// f and amt are the sheet and amount the user tapped on (defaults: the sheet that is open now)
+async function saveSms(cat, f = smsForm, amt = num($("sAmt").value)){
+  const isIn = f.p.type === "Income";
   const row = { user_id: currentUser.id, type: f.p.type, cat, amt, note: smsNote() || "From bank SMS",
                 client_id: isIn ? (f.client || null) : null, payment_type: isIn ? f.pay : null, created_at: f.when.toISOString() };
-  const r = await writeTx("insert", row);
-  if(r.error){ toast("Couldn't save: " + r.error.message); return; }
-  tx.push(r.data[0]); await removeInbox(inboxIdsFor(f.p.ref, f.inboxId), f.p.ref);
-  closeSheet(); renderAll();
-  toast(`Saved ${money(amt)} · ${cat}`);
+  await withInboxBusy(f, async () => {
+    const r = await writeTx("insert", row);
+    if(r.error){ toast("Couldn't save: " + r.error.message); return; }
+    tx.push(r.data[0]); markSaved(f);
+    const removed = await removeInbox(inboxIdsFor(f.p.ref, f.inboxId), f.p.ref);
+    afterSmsSaved(f);
+    toast(removed ? `Saved ${money(amt)} · ${cat}` : `Saved ${money(amt)}, but it's still in To review: remove it there`);
+  });
+}
+// a payment being saved right now, or already saved, must not be saved again from another sheet for the same SMS
+// Every path that saves or removes an inbox payment (sheet, loan chip, Remove, ✓, Approve all) must claim it first.
+// The check and the claim happen in one synchronous step, so whichever path gets there first wins.
+const busyInbox = new Set();
+const savedInbox = new Set();   // saved as a transaction, but its To review copy could not be deleted yet
+function inboxKeys(f){ return [f.inboxId, f.p.ref ? "ref:" + f.p.ref : ""].filter(Boolean); }
+function smsAlreadyHandled(f){ return inboxKeys(f).some(k => busyInbox.has(k) || savedInbox.has(k)) || !!(f.inboxId && removedAt.has(f.inboxId)); }
+function markSaved(f){ inboxKeys(f).forEach(k => savedInbox.add(k)); }
+async function withInboxBusy(f, run, quiet){
+  if(smsAlreadyHandled(f)){
+    if(!quiet){ toast("Already saved"); if(smsForm && sameSmsPayment(smsForm, f) && !$("sheetWrap").classList.contains("hidden") && $("sCats")) closeSheet(); }
+    return false;
+  }
+  const keys = inboxKeys(f); keys.forEach(k => busyInbox.add(k));
+  try{ return await run(); } finally { keys.forEach(k => busyInbox.delete(k)); }
+}
+function sameSmsPayment(a, b){ return !!((a.inboxId && a.inboxId === b.inboxId) || (a.p.ref && a.p.ref === b.p.ref)); }
+// after f was saved or removed: close its sheet, and also any other open sheet for the very same payment
+// (e.g. reopened from To review while the save was running); repaint any other SMS sheet's duplicate warning
+function afterSmsSaved(f){
+  const smsOpen = smsForm && !$("sheetWrap").classList.contains("hidden") && $("sCats");
+  if(smsOpen && (smsForm === f || sameSmsPayment(smsForm, f))) closeSheet();
+  renderAll(); refreshSmsSheet();
 }
 async function saveSmsLoan(id){
-  const o = owes.find(x => x.id === id), f = smsForm, amt = num($("sAmt").value); if(!o) return;
-  const ok = await recordLoanPayment(o, Math.min(amt, loanLeft(o)), f.when.toISOString(), [f.party, f.p.account].filter(Boolean).join(" · "));
-  if(!ok) return;
-  await removeInbox(inboxIdsFor(f.p.ref, f.inboxId), f.p.ref);
-  closeSheet(); renderAll();
-  const nl = loanLeft(o);
-  toast(nl > 0 ? `${o.name}: ${money(amt)} paid · ${money(nl)} left` : `${o.name} is fully paid 🎉`);
+  const o = owes.find(x => x.id === id), f = smsForm; if(!o || !f || f.saving) return;
+  const amt = num($("sAmt").value);
+  if(smsAlreadyHandled(f)){ toast("Already saved"); if(smsForm === f) closeSheet(); return; }
+  f.saving = true;
+  try{
+    await withInboxBusy(f, async () => {
+      const ok = await recordLoanPayment(o, Math.min(amt, loanLeft(o)), f.when.toISOString(), [f.party, f.p.account].filter(Boolean).join(" · "));
+      if(!ok) return;
+      markSaved(f);
+      const removed = await removeInbox(inboxIdsFor(f.p.ref, f.inboxId), f.p.ref);
+      afterSmsSaved(f);
+      const nl = loanLeft(o);
+      toast((nl > 0 ? `${o.name}: ${money(amt)} paid · ${money(nl)} left` : `${o.name} is fully paid 🎉`) + (removed ? "" : ". It's still in To review: remove it there"));
+    });
+  } finally { f.saving = false; }
+}
+async function saveSmsNone(){      // "Not one of these" in the loan choice
+  const f = smsForm; if(!f || f.saving) return;
+  if(smsAlreadyHandled(f)){ toast("Already saved"); if(smsForm === f) closeSheet(); return; }
+  const amt = num($("sAmt").value);
+  f.saving = true;
+  try{ await saveSms("EMI/Debt", f, amt); } finally { f.saving = false; }
 }
 async function dismissSms(){
-  await removeInbox(inboxIdsFor(smsForm.p.ref, smsForm.inboxId), smsForm.p.ref);
-  closeSheet(); renderAll(); toast("Removed from To review");
+  const f = smsForm; if(!f || f.saving) return;
+  if(inboxKeys(f).some(k => busyInbox.has(k))){ toast("It's being saved right now"); return; }
+  f.saving = true;
+  const keys = inboxKeys(f); keys.forEach(k => busyInbox.add(k));
+  try{
+    const removed = await removeInbox(inboxIdsFor(f.p.ref, f.inboxId), f.p.ref);
+    if(!removed){ renderAll(); toast("Couldn't remove it, check your connection and try again"); return; }
+    afterSmsSaved(f); toast("Removed from To review");
+  } finally { keys.forEach(k => busyInbox.delete(k)); f.saving = false; }
 }
 
 // ---------- iPhone setup: private key + the automation recipe ----------
